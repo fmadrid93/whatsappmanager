@@ -1,0 +1,205 @@
+import crypto from "node:crypto";
+import { getContentType, proto, type WAMessage, type WASocket } from "@whiskeysockets/baileys";
+import type { IConversationRepository, ConversationRecord } from "../ports/repositories/conversation.repository.js";
+import type { ISessionRepository } from "../ports/repositories/session.repository.js";
+import type { BotFlowRecord, BotFlowStep, IBotFlowRepository } from "../ports/repositories/bot-flow.repository.js";
+import type { IWhatsAppMessageRepository } from "../ports/repositories/whatsapp-message.repository.js";
+import { randomBetween, sleep } from "../../shared/utils/delay.js";
+import { logger } from "../../shared/logger/logger.js";
+
+function messageDate(message: WAMessage): Date {
+  const value = message.messageTimestamp;
+  if (typeof value === "number") return new Date(value * 1000);
+  if (typeof value === "bigint") return new Date(Number(value) * 1000);
+  if (value && typeof value === "object" && "toNumber" in value) return new Date((value as { toNumber: () => number }).toNumber() * 1000);
+  return new Date();
+}
+
+function inboundText(message: WAMessage): string {
+  const content = message.message;
+  if (!content) return "";
+  return (
+    content.conversation
+    ?? content.extendedTextMessage?.text
+    ?? content.imageMessage?.caption
+    ?? content.videoMessage?.caption
+    ?? content.buttonsResponseMessage?.selectedDisplayText
+    ?? content.buttonsResponseMessage?.selectedButtonId
+    ?? content.listResponseMessage?.title
+    ?? content.listResponseMessage?.singleSelectReply?.selectedRowId
+    ?? content.templateButtonReplyMessage?.selectedDisplayText
+    ?? content.templateButtonReplyMessage?.selectedId
+    ?? ""
+  ).trim();
+}
+
+function interpolate(text: string, variables: Record<string, string>): string {
+  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => variables[key] ?? "");
+}
+
+function conditionPasses(step: Extract<BotFlowStep, { type: "CONDITION" }>, variables: Record<string, string>): boolean {
+  const actual = variables[step.variable]?.trim() || "";
+  if (step.operator === "EXISTS") return actual.length > 0;
+  const expected = step.value?.trim() || "";
+  if (step.operator === "EQUALS") return actual.toLocaleLowerCase() === expected.toLocaleLowerCase();
+  return actual.toLocaleLowerCase().includes(expected.toLocaleLowerCase());
+}
+
+export interface InboundMessageTiming {
+  delay?: (milliseconds: number) => Promise<void>;
+  nextDelayMs?: () => number;
+  createMessageId?: () => string;
+}
+
+export class InboundMessageService {
+  private readonly wait: (milliseconds: number) => Promise<void>;
+  private readonly nextDelayMs: () => number;
+  private readonly createMessageId: () => string;
+
+  constructor(
+    private readonly conversations: IConversationRepository,
+    private readonly sessions: ISessionRepository,
+    private readonly flows: IBotFlowRepository,
+    private readonly messages: IWhatsAppMessageRepository,
+    private readonly defaultReply: string,
+    timing: InboundMessageTiming = {},
+  ) {
+    this.wait = timing.delay ?? sleep;
+    this.nextDelayMs = timing.nextDelayMs ?? (() => randomBetween(2000, 4000));
+    this.createMessageId = timing.createMessageId ?? (() => crypto.randomUUID().replaceAll("-", "").toUpperCase());
+  }
+
+  register(socket: WASocket, sessionId: string): void {
+    socket.ev.on("messages.upsert", async ({ type, messages }: { type: string; messages: WAMessage[] }) => {
+      if (type !== "notify") return;
+      for (const message of messages) {
+        try { await this.handle(socket, sessionId, message); }
+        catch (error) { logger.error({ error, sessionId, messageId: message.key.id }, "Error procesando mensaje entrante."); }
+      }
+    });
+  }
+
+  private async sendText(
+    socket: WASocket,
+    conversation: ConversationRecord,
+    remoteJid: string,
+    text: string,
+    inboundMessageId: string,
+  ): Promise<void> {
+    const finalText = text.trim();
+    if (!finalText) return;
+    await socket.sendPresenceUpdate("composing", remoteJid);
+    await this.wait(this.nextDelayMs());
+    const sent = await socket.sendMessage(remoteJid, { text: finalText }, { messageId: this.createMessageId() });
+    await socket.sendPresenceUpdate("paused", remoteJid);
+    if (sent?.key.id && sent.message) {
+      await this.messages.save({
+        tenantId: conversation.tenantId,
+        sessionId: conversation.sessionId,
+        conversationId: conversation.id,
+        whatsappMessageId: sent.key.id,
+        remoteJid,
+        direction: "OUTBOUND",
+        messageType: getContentType(sent.message) ?? "conversation",
+        status: "SUBMITTED",
+        fromMe: true,
+        payload: Buffer.from(proto.Message.encode(sent.message).finish()),
+        messageTimestamp: new Date(),
+      });
+      await this.messages.setInboundResponse(conversation.sessionId, inboundMessageId, sent.key.id);
+    }
+  }
+
+  private async runFlow(
+    socket: WASocket,
+    conversation: ConversationRecord,
+    remoteJid: string,
+    inboundMessageId: string,
+    text: string,
+  ): Promise<boolean> {
+    let flow: BotFlowRecord | null = null;
+    let index = Number.parseInt(conversation.flowNodeId || "0", 10);
+    if (!Number.isFinite(index) || index < 0) index = 0;
+    const variables = { ...(conversation.flowVariables || {}) };
+
+    if (conversation.flowId) flow = await this.flows.findByIdForSession(conversation.flowId, conversation.sessionId);
+    if (flow && conversation.flowAwaitingVariable) {
+      variables[conversation.flowAwaitingVariable] = text;
+      conversation.flowAwaitingVariable = undefined;
+    }
+    if (!flow) {
+      flow = await this.flows.findActiveForSession(conversation.sessionId, text);
+      index = 0;
+    }
+    if (!flow) return false;
+
+    for (let guard = 0; guard < 50 && index < flow.definition.steps.length; guard += 1) {
+      const step = flow.definition.steps[index];
+      if (step.type === "MESSAGE") {
+        await this.sendText(socket, conversation, remoteJid, interpolate(step.text, variables), inboundMessageId);
+        index += 1;
+        continue;
+      }
+      if (step.type === "QUESTION") {
+        await this.sendText(socket, conversation, remoteJid, interpolate(step.text, variables), inboundMessageId);
+        await this.conversations.saveFlowState(conversation.id, {
+          flowId: flow.id,
+          nodeIndex: index + 1,
+          awaitingVariable: step.variable,
+          variables,
+        });
+        return true;
+      }
+      if (step.type === "CONDITION") {
+        const selected = conditionPasses(step, variables) ? step.ifTrueText : step.ifFalseText;
+        if (selected) await this.sendText(socket, conversation, remoteJid, interpolate(selected, variables), inboundMessageId);
+        index += 1;
+        continue;
+      }
+      if (step.text) await this.sendText(socket, conversation, remoteJid, interpolate(step.text, variables), inboundMessageId);
+      await this.conversations.clearFlowState(conversation.id);
+      return true;
+    }
+
+    await this.conversations.clearFlowState(conversation.id);
+    return true;
+  }
+
+  private async handle(socket: WASocket, sessionId: string, message: WAMessage): Promise<void> {
+    const remoteJid = message.key.remoteJid;
+    const messageId = message.key.id;
+    if (!remoteJid || !messageId || !message.message || message.key.fromMe) return;
+    if (remoteJid.endsWith("@broadcast") || remoteJid === "status@broadcast") return;
+
+    const session = await this.sessions.findById(sessionId);
+    if (!session) return;
+    const reserved = await this.messages.reserveInboundEvent({ tenantId: session.tenantId, sessionId, whatsappMessageId: messageId });
+    if (!reserved) return;
+
+    try {
+      await socket.readMessages([message.key]);
+      const conversation = await this.conversations.recordInbound({ tenantId: session.tenantId, sessionId, remoteJid, messageId });
+      await this.messages.save({
+        tenantId: session.tenantId,
+        sessionId,
+        conversationId: conversation.id,
+        whatsappMessageId: messageId,
+        remoteJid,
+        participantJid: message.key.participant ?? undefined,
+        direction: "INBOUND",
+        messageType: getContentType(message.message) ?? "unknownMessage",
+        status: "RECEIVED",
+        fromMe: false,
+        payload: Buffer.from(proto.Message.encode(message.message).finish()),
+        messageTimestamp: messageDate(message),
+      });
+
+      if (!conversation.sessionBotActive || !conversation.isBotActive) return;
+      const handled = await this.runFlow(socket, conversation, remoteJid, messageId, inboundText(message));
+      if (!handled) await this.sendText(socket, conversation, remoteJid, this.defaultReply, messageId);
+    } catch (error) {
+      await this.messages.releaseInboundEvent(sessionId, messageId);
+      throw error;
+    }
+  }
+}

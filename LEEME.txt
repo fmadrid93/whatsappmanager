@@ -1,0 +1,19 @@
+WHATSAPP SAAS v1.3.0-alpha - WINDOWS + SQL SERVER
+
+INSTALACION NUEVA:
+1. Copia .env.windows.example como .env o ejecuta CONFIGURE-MOCK.cmd.
+2. Ejecuta INSTALL-DEPENDENCIES.cmd.
+3. Ejecuta CREATE-DATABASE.cmd.
+4. Ejecuta MIGRATE-DATABASE.cmd.
+5. Ejecuta BUILD-APPLICATION.cmd.
+6. Ejecuta INICIAR-TODO.cmd.
+
+ACTUALIZACION DESDE v1.2.1:
+Lee docs\ACTUALIZAR-DESDE-V1.2.1.md. Conserva tu .env y haz backup SQL Server.
+
+IMPORTANTE:
+- Este ZIP no contiene .env, contraseñas, node_modules ni datos.
+- El backend genera package-lock.json durante la primera instalación.
+- En modo MOCK no existe QR real.
+- En modo BAILEYS usa únicamente números y destinatarios autorizados.
+- Baileys es una integración no oficial; prueba antes de producción.

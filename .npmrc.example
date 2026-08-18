@@ -1,0 +1,11 @@
+# Copia este archivo como .npmrc solo cuando tu red corporativa lo requiera.
+# Nunca guardes usuarios, contraseñas o tokens dentro del repositorio.
+registry=https://registry.npmjs.org/
+fetch-retries=2
+fetch-retry-factor=2
+fetch-retry-mintimeout=5000
+fetch-retry-maxtimeout=30000
+fetch-timeout=300000
+prefer-offline=true
+audit=false
+fund=false

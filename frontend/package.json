@@ -1,0 +1,35 @@
+{
+  "name": "whatsapp-saas-web",
+  "version": "1.3.0-alpha",
+  "private": true,
+  "scripts": {
+    "start": "ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json",
+    "build": "ng build",
+    "check": "ng build --configuration development",
+    "lock": "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+    "test:contract": "node scripts/contract-tests.mjs",
+    "test": "npm run test:contract",
+    "lock:validate": "python ../scripts/tests/validate-lockfiles.py --require"
+  },
+  "dependencies": {
+    "@angular/animations": "21.0.0",
+    "@angular/common": "21.0.0",
+    "@angular/compiler": "21.0.0",
+    "@angular/core": "21.0.0",
+    "@angular/forms": "21.0.0",
+    "@angular/platform-browser": "21.0.0",
+    "@angular/router": "21.0.0",
+    "@primeng/themes": "21.0.0",
+    "primeicons": "7.0.0",
+    "primeng": "21.0.0",
+    "rxjs": "7.8.2",
+    "tslib": "2.8.1",
+    "zone.js": "0.15.1"
+  },
+  "devDependencies": {
+    "@angular/build": "21.0.0",
+    "@angular/cli": "21.0.0",
+    "@angular/compiler-cli": "21.0.0",
+    "typescript": "5.9.3"
+  }
+}

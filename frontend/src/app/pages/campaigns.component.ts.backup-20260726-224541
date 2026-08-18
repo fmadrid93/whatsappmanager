@@ -1,0 +1,246 @@
+import { Component, OnInit, inject, signal } from "@angular/core";
+import { DatePipe } from "@angular/common";
+import { FormsModule } from "@angular/forms";
+import { ButtonModule } from "primeng/button";
+import { CardModule } from "primeng/card";
+import { InputTextModule } from "primeng/inputtext";
+import { TableModule } from "primeng/table";
+import { MessageService } from "primeng/api";
+import {
+  ApiService,
+  type CampaignRecord,
+  type DeadLetterRecord,
+  type MediaRecord,
+  type SessionRecord,
+} from "../core/api.service";
+import {
+  downloadContactTemplate,
+  parseContactFile,
+  type ImportedContact,
+} from "../shared/contact-file-parser";
+
+@Component({
+  standalone: true,
+  imports: [FormsModule, DatePipe, ButtonModule, CardModule, InputTextModule, TableModule],
+  template: `
+    <main class="page">
+      <div class="page-header">
+        <div>
+          <h1>Campañas</h1>
+          <div class="muted">Carga manual, CSV/XLSX o API externa; variables por contacto y cola durable.</div>
+        </div>
+      </div>
+
+      <div class="grid two">
+        <p-card header="Nueva campaña">
+          <form class="form-grid" (ngSubmit)="createCampaign()">
+            <label for="campaign-name">Nombre</label>
+            <input pInputText id="campaign-name" name="campaignName" [(ngModel)]="name" />
+
+            <label>Sesiones emisoras y de relevo</label>
+            <div class="session-options">
+              @for (session of connectedSessions(); track session.id) {
+                <label class="check-row">
+                  <input type="checkbox" [checked]="selectedSessionIds().includes(session.id)" (change)="toggleSession(session.id)" />
+                  {{ session.name }} — {{ session.phoneE164 || session.status }}
+                </label>
+              } @empty { <div class="muted">Conecta al menos una sesión real.</div> }
+            </div>
+
+            <label>Destinatarios</label>
+            <div class="import-box">
+              <div class="row-actions">
+                <p-button type="button" label="Descargar plantilla CSV" icon="pi pi-download" severity="secondary" (onClick)="downloadTemplate()" />
+                <label class="file-button">
+                  <span class="pi pi-file-excel"></span> Cargar CSV o XLSX
+                  <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" (change)="importContacts($event)" />
+                </label>
+              </div>
+              @if (importing()) { <div class="muted">Validando archivo…</div> }
+              @if (importedContacts().length || importErrors().length) {
+                <div class="import-summary">
+                  <strong>{{ importedContacts().length }} válidos</strong>
+                  <span>{{ duplicateCount() }} duplicados omitidos</span>
+                  <span>{{ importErrors().length }} errores</span>
+                </div>
+                @if (importErrors().length) {
+                  <details><summary>Ver errores</summary><div class="error-list">@for (error of importErrors(); track error) { <div>{{ error }}</div> }</div></details>
+                }
+                @if (importedContacts().length) {
+                  <div class="preview-table">
+                    @for (contact of importedContacts().slice(0, 8); track contact.sourceRow) {
+                      <div><span>{{ contact.name || '—' }}</span><strong>{{ contact.phone }}</strong><small>{{ variableSummary(contact) }}</small></div>
+                    }
+                    @if (importedContacts().length > 8) { <div class="muted">…y {{ importedContacts().length - 8 }} más.</div> }
+                  </div>
+                }
+              }
+            </div>
+
+            <label for="contacts">Carga manual adicional</label>
+            <textarea id="contacts" name="contacts" rows="5" [(ngModel)]="contactsText" placeholder="Ana,+59170000001&#10;Luis,70000002"></textarea>
+            <div class="contact-help">Una línea: Nombre,Teléfono. Se combinará con el archivo sin duplicar.</div>
+
+            <label for="region">Región por defecto</label>
+            <input pInputText id="region" name="region" maxlength="2" [(ngModel)]="defaultRegion" />
+
+            <label for="message">Mensaje / plantilla</label>
+            <textarea id="message" name="message" rows="5" [(ngModel)]="messageText" placeholder="Hola {{nombre}}, tu saldo es {{saldo}}."></textarea>
+            <div class="contact-help">Variables disponibles: {{ '{{nombre}}' }}, {{ '{{telefono}}' }} y cualquier columna extra del archivo.</div>
+
+            <label for="media">Multimedia opcional</label>
+            <select id="media" name="mediaAssetId" [(ngModel)]="mediaAssetId">
+              <option value="">Sin multimedia</option>
+              @for (media of mediaItems(); track media.id) { <option [value]="media.id">{{ media.fileName }} — {{ media.status }}</option> }
+            </select>
+
+            <label class="check-row consent">
+              <input type="checkbox" name="consent" [(ngModel)]="consentConfirmed" />
+              Confirmo que los destinatarios autorizaron recibir estos mensajes.
+            </label>
+
+            <div class="actions"><p-button type="submit" label="Crear campaña" icon="pi pi-save" [loading]="saving()" /></div>
+          </form>
+        </p-card>
+
+        <p-card header="Subir multimedia temporal">
+          <div class="form-grid">
+            <input type="file" (change)="selectFile($event)" />
+            <div class="muted">Máximo 25 MB. En MOCK se conserva localmente; con S3 se usa almacenamiento privado.</div>
+            <p-button label="Subir archivo" icon="pi pi-upload" [disabled]="!selectedFile" [loading]="uploading()" (onClick)="upload()" />
+            @for (media of mediaItems(); track media.id) { <div class="media-row"><span>{{ media.fileName }}</span><span class="status-pill">{{ media.status }}</span></div> }
+          </div>
+        </p-card>
+      </div>
+
+      <p-card header="Campañas registradas" styleClass="campaign-table">
+        <p-table [value]="campaigns()" [tableStyle]="{ 'min-width': '1100px' }">
+          <ng-template #header><tr><th>Nombre</th><th>Estado</th><th>Total</th><th>Enviados</th><th>Fallidos/DLQ</th><th>Fecha</th><th>Acciones</th></tr></ng-template>
+          <ng-template #body let-campaign><tr>
+            <td>{{ campaign.name }}</td><td><span class="status-pill">{{ campaign.status }}</span></td><td>{{ campaign.totalMessages }}</td><td>{{ campaign.sentMessages }}</td><td>{{ campaign.failedMessages }}</td><td>{{ campaign.createdAt | date:'short' }}</td>
+            <td><div class="row-actions">
+              <p-button label="Iniciar" size="small" icon="pi pi-play" [disabled]="campaign.status !== 'DRAFT'" (onClick)="start(campaign)" />
+              <p-button label="Pausar" size="small" severity="secondary" icon="pi pi-pause" [disabled]="campaign.status !== 'RUNNING' && campaign.status !== 'PREPARING'" (onClick)="pause(campaign)" />
+              <p-button label="Reanudar" size="small" severity="secondary" icon="pi pi-refresh" [disabled]="campaign.status !== 'PAUSED'" (onClick)="resume(campaign)" />
+              <p-button label="Cancelar" size="small" severity="danger" icon="pi pi-times" [disabled]="campaign.status === 'COMPLETED' || campaign.status === 'CANCELLED'" (onClick)="cancel(campaign)" />
+              <p-button label="DLQ" size="small" severity="contrast" icon="pi pi-inbox" (onClick)="loadDeadLetters(campaign)" />
+            </div></td>
+          </tr></ng-template>
+        </p-table>
+      </p-card>
+
+      @if (selectedCampaignId()) {
+        <p-card header="Dead Letter Queue" styleClass="campaign-table">
+          <div class="muted dlq-title">Campaña: {{ selectedCampaignName() }}</div>
+          <p-table [value]="deadLetters()" [tableStyle]="{ 'min-width': '900px' }">
+            <ng-template #header><tr><th>Número</th><th>Motivo</th><th>Intentos</th><th>Fecha</th><th>Estado</th><th>Acción</th></tr></ng-template>
+            <ng-template #body let-item><tr>
+              <td>{{ item.recipientE164 || '—' }}</td><td><strong>{{ item.reasonCode }}</strong><div class="muted">{{ item.reasonMessage }}</div></td><td>{{ item.attemptCount }}</td><td>{{ item.failedAt | date:'short' }}</td><td>{{ item.resolvedAt ? 'RESUELTO' : 'PENDIENTE' }}</td><td><p-button label="Reencolar" size="small" [disabled]="!!item.resolvedAt" (onClick)="requeue(item)" /></td>
+            </tr></ng-template>
+          </p-table>
+        </p-card>
+      }
+    </main>
+  `,
+  styles: [`
+    .campaign-table { display:block; margin-top:1rem; }
+    .session-options { display:grid; gap:.4rem; border:1px solid #d8dee4; padding:.7rem; border-radius:.5rem; max-height:160px; overflow:auto; }
+    .check-row { font-weight:400 !important; display:flex; gap:.5rem; align-items:center; }
+    .media-row,.import-summary { display:flex; justify-content:space-between; gap:.5rem; padding:.5rem 0; border-bottom:1px solid #edf0f2; }
+    .row-actions { display:flex; flex-wrap:wrap; gap:.35rem; }
+    .dlq-title { margin-bottom:.75rem; }
+    .import-box { border:1px dashed #aeb8c2; border-radius:.6rem; padding:.8rem; display:grid; gap:.6rem; }
+    .file-button { cursor:pointer; display:inline-flex; align-items:center; gap:.4rem; padding:.55rem .8rem; background:#eef2f6; border-radius:.45rem; }
+    .file-button input { display:none; }
+    .preview-table { display:grid; gap:.3rem; max-height:220px; overflow:auto; }
+    .preview-table > div { display:grid; grid-template-columns:1fr 1fr 2fr; gap:.5rem; font-size:.88rem; padding:.3rem; background:#f8fafb; }
+    .error-list { color:#b42318; max-height:130px; overflow:auto; }
+    .consent { margin-top:.5rem; }
+  `],
+})
+export class CampaignsComponent implements OnInit {
+  private readonly api = inject(ApiService);
+  private readonly messages = inject(MessageService);
+  readonly sessions = signal<SessionRecord[]>([]);
+  readonly campaigns = signal<CampaignRecord[]>([]);
+  readonly mediaItems = signal<MediaRecord[]>([]);
+  readonly connectedSessions = signal<SessionRecord[]>([]);
+  readonly selectedSessionIds = signal<string[]>([]);
+  readonly deadLetters = signal<DeadLetterRecord[]>([]);
+  readonly selectedCampaignId = signal("");
+  readonly selectedCampaignName = signal("");
+  readonly saving = signal(false);
+  readonly uploading = signal(false);
+  readonly importing = signal(false);
+  readonly importedContacts = signal<ImportedContact[]>([]);
+  readonly importErrors = signal<string[]>([]);
+  readonly duplicateCount = signal(0);
+
+  name = "";
+  contactsText = "";
+  defaultRegion = "BO";
+  messageText = "";
+  mediaAssetId = "";
+  consentConfirmed = false;
+  selectedFile?: File;
+
+  ngOnInit(): void { this.load(); }
+  load(): void {
+    this.api.sessions().subscribe((items) => { this.sessions.set(items); this.connectedSessions.set(items.filter((item) => item.status === "CONNECTED")); });
+    this.api.campaigns().subscribe((items) => this.campaigns.set(items));
+    this.api.media().subscribe((items) => this.mediaItems.set(items));
+  }
+  toggleSession(id: string): void { const current = this.selectedSessionIds(); this.selectedSessionIds.set(current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); }
+  downloadTemplate(): void { downloadContactTemplate(); }
+  async importContacts(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    this.importing.set(true);
+    try {
+      const result = await parseContactFile(file);
+      this.importedContacts.set(result.contacts);
+      this.importErrors.set(result.errors);
+      this.duplicateCount.set(result.duplicates);
+      this.messages.add({ severity: result.contacts.length ? "success" : "warn", summary: `${result.contacts.length} contactos válidos` });
+    } catch (error) {
+      this.importErrors.set([error instanceof Error ? error.message : "No se pudo leer el archivo."]);
+      this.importedContacts.set([]);
+    } finally { this.importing.set(false); input.value = ""; }
+  }
+  variableSummary(contact: ImportedContact): string { return Object.entries(contact.variables || {}).map(([key, value]) => `${key}=${value}`).join(" · ") || "Sin variables extra"; }
+  selectFile(event: Event): void { this.selectedFile = (event.target as HTMLInputElement).files?.[0]; }
+  upload(): void {
+    if (!this.selectedFile) return;
+    this.uploading.set(true);
+    this.api.uploadMedia(this.selectedFile).subscribe({
+      next: (media) => { this.mediaAssetId = media.id; this.selectedFile = undefined; this.load(); this.messages.add({ severity:"success", summary:"Archivo subido" }); },
+      error: () => this.uploading.set(false), complete: () => this.uploading.set(false),
+    });
+  }
+  private manualContacts(): ImportedContact[] {
+    return this.contactsText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line, index) => {
+      const comma = line.lastIndexOf(",");
+      return comma >= 0 ? { name: line.slice(0, comma).trim() || undefined, phone: line.slice(comma + 1).trim(), sourceRow: index + 1 } : { phone: line, sourceRow: index + 1 };
+    });
+  }
+  createCampaign(): void {
+    if (!this.consentConfirmed) { this.messages.add({ severity:"warn", summary:"Confirma la autorización de los destinatarios." }); return; }
+    const merged = [...this.importedContacts(), ...this.manualContacts()];
+    const seen = new Set<string>();
+    const contacts = merged.filter((contact) => { const key = contact.phone.replace(/\D/g, ""); if (!key || seen.has(key)) return false; seen.add(key); return true; }).map(({ sourceRow: _sourceRow, ...contact }) => contact);
+    if (!contacts.length) { this.messages.add({ severity:"warn", summary:"Carga al menos un contacto." }); return; }
+    this.saving.set(true);
+    this.api.createCampaign({ name:this.name, sessionIds:this.selectedSessionIds(), contacts, message:{ text:this.messageText }, mediaAssetId:this.mediaAssetId || undefined, defaultRegion:this.defaultRegion.toUpperCase() }).subscribe({
+      next: () => { this.name=""; this.contactsText=""; this.messageText=""; this.consentConfirmed=false; this.importedContacts.set([]); this.importErrors.set([]); this.selectedSessionIds.set([]); this.load(); this.messages.add({ severity:"success", summary:"Campaña creada" }); },
+      error: (error: { error?: { message?: string } }) => { this.messages.add({ severity:"error", summary:"No se pudo crear", detail:error.error?.message }); this.saving.set(false); },
+      complete: () => this.saving.set(false),
+    });
+  }
+  start(c:CampaignRecord):void{this.api.startCampaign(c.id).subscribe(()=>this.load());}
+  pause(c:CampaignRecord):void{this.api.pauseCampaign(c.id).subscribe(()=>this.load());}
+  resume(c:CampaignRecord):void{this.api.resumeCampaign(c.id).subscribe(()=>this.load());}
+  cancel(c:CampaignRecord):void{this.api.cancelCampaign(c.id).subscribe(()=>this.load());}
+  loadDeadLetters(c:CampaignRecord):void{this.selectedCampaignId.set(c.id);this.selectedCampaignName.set(c.name);this.api.deadLetters(c.id).subscribe((items)=>this.deadLetters.set(items));}
+  requeue(item:DeadLetterRecord):void{this.api.requeueDeadLetter(item.campaignId,item.id).subscribe(()=>{const id=this.selectedCampaignId();if(id)this.api.deadLetters(id).subscribe((items)=>this.deadLetters.set(items));});}
+}

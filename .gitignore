@@ -1,0 +1,16 @@
+.env
+*.local
+backend/node_modules/
+frontend/node_modules/
+backend/dist/
+frontend/dist/
+logs/
+backups/
+runtime/services/*.exe
+runtime/services/*.xml
+release-evidence/
+*.log
+.DS_Store
+Thumbs.db
+
+backend/.mock-object-storage/

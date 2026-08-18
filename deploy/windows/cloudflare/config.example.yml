@@ -1,0 +1,7 @@
+tunnel: REEMPLAZAR_UUID_TUNNEL
+credentials-file: C:\Cloudflared\REEMPLAZAR_UUID_TUNNEL.json
+
+ingress:
+  - hostname: wa.tudominio.com
+    service: http://localhost:8080
+  - service: http_status:404

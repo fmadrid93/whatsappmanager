@@ -1,0 +1,9 @@
+[
+  {
+    "AllowedHeaders": ["content-type", "x-amz-server-side-encryption"],
+    "AllowedMethods": ["PUT"],
+    "AllowedOrigins": ["http://localhost:8080", "https://wa-dev.example.com"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]

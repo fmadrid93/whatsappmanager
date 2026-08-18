@@ -1,0 +1,857 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  name      String @db.NVarChar(191)
+  status    String   @default("ACTIVE") @db.NVarChar(191)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         AppUser[]
+  sessions      WhatsAppSession[]
+  flows         BotFlow[]
+  conversations Conversation[]
+  conversationNotes ConversationNote[]
+  conversationOutbox ConversationOutbox[]
+  integrationApiKeys IntegrationApiKey[]
+  webhookEndpoints WebhookEndpoint[]
+  webhookDeliveries WebhookDelivery[]
+  integrationRequestLogs IntegrationRequestLog[]
+  externalConnectors ExternalConnector[]
+  externalConnectorExecutions ExternalConnectorExecution[]
+  campaigns     Campaign[]
+  mediaAssets   MediaAsset[]
+  queueItems    MessageQueue[]
+  preparationJobs MediaPreparationJob[]
+  refreshSessions RefreshSession[]
+  auditLogs AuditLog[]
+  whatsappMessages WhatsAppMessage[]
+  processedInboundEvents ProcessedInboundEvent[]
+  messageAttempts MessageAttempt[]
+  deadLetterMessages DeadLetterMessage[]
+  capacityPolicy TenantCapacityPolicy?
+  monthlyUsage TenantUsageMonthly[]
+  usageEvents TenantUsageEvent[]
+  outboxEvents OutboxEvent[]
+
+  @@index([status])
+}
+
+model AppUser {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId     String @db.UniqueIdentifier
+  email        String   @unique @db.NVarChar(191)
+  displayName  String @db.NVarChar(191)
+  passwordHash String @db.NVarChar(191)
+  role         String   @default("TENANT_ADMIN") @db.NVarChar(191)
+  status       String   @default("ACTIVE") @db.NVarChar(191)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant                Tenant              @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ownedSessions         WhatsAppSession[]    @relation("SessionOwner")
+  assignedConversations Conversation[]       @relation("ConversationAgent")
+  conversationNotes ConversationNote[]         @relation("ConversationNoteAuthor")
+  conversationOutbox ConversationOutbox[]      @relation("ConversationOutboxActor")
+  createdIntegrationApiKeys IntegrationApiKey[] @relation("IntegrationApiKeyCreator")
+  createdWebhookEndpoints WebhookEndpoint[]     @relation("WebhookEndpointCreator")
+  createdExternalConnectors ExternalConnector[]     @relation("ExternalConnectorCreator")
+  refreshSessions      RefreshSession[]
+  auditLogs            AuditLog[]              @relation("AuditActor")
+
+  @@index([tenantId, status])
+}
+
+model WhatsAppSession {
+  id               String    @id @default(uuid()) @db.UniqueIdentifier
+  tenantId         String @db.UniqueIdentifier
+  ownerUserId      String @db.UniqueIdentifier
+  name             String @db.NVarChar(191)
+  expectedPhoneE164 String? @db.NVarChar(191)
+  phoneE164        String? @db.NVarChar(191)
+  whatsappJid      String? @db.NVarChar(191)
+  pairingMethod    String    @default("QR") @db.NVarChar(191)
+  pairingCode      String? @db.NVarChar(191)
+  pairingCodeUpdatedAt DateTime?
+  status           String    @default("NEW") @db.NVarChar(191)
+  isBotActive      Boolean   @default(true) @map("is_bot_active")
+  disconnectReason String? @db.NVarChar(1000)
+  lastConnectionCode Int?
+  lastConnectionError String? @db.NVarChar(Max)
+  lastConnectionAt DateTime?
+  qrCode           String? @db.NVarChar(Max)
+  qrUpdatedAt      DateTime?
+  lastHeartbeatAt  DateTime?
+  connectedAt      DateTime?
+  disconnectedAt   DateTime?
+  leaseOwner       String? @db.NVarChar(191)
+  leaseExpiresAt   DateTime?
+  revision         Int       @default(0)
+  shardKey        Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  owner         AppUser               @relation("SessionOwner", fields: [ownerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  credential    BaileysCredential?
+  authKeys      BaileysAuthKey[]
+  flowLinks     BotFlowSession[]
+  campaignLinks CampaignSession[]
+  conversations Conversation[]
+  conversationOutbox ConversationOutbox[]
+  mediaUploads  MediaUpload[]
+  queueItems    MessageQueue[]        @relation("AssignedSession")
+  preparationJobs MediaPreparationJob[]
+  messages WhatsAppMessage[]
+  processedInboundEvents ProcessedInboundEvent[]
+  messageAttempts MessageAttempt[]
+  deadLetterMessages DeadLetterMessage[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, ownerUserId, status, isBotActive])
+  @@index([leaseExpiresAt])
+  @@index([shardKey, status, leaseExpiresAt])
+}
+
+model BaileysCredential {
+  sessionId String   @id @db.UniqueIdentifier
+  payload   Bytes
+  revision  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model BaileysAuthKey {
+  sessionId String @db.UniqueIdentifier
+  category  String @db.NVarChar(191)
+  keyId     String @db.NVarChar(191)
+  payload   Bytes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([sessionId, category, keyId])
+  @@index([sessionId, category])
+}
+
+model BotFlow {
+  id                String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId          String @db.UniqueIdentifier
+  name              String @db.NVarChar(191)
+  description       String? @db.NVarChar(Max)
+  version           Int      @default(1)
+  isActive          Boolean  @default(true)
+  definitionPayload Bytes
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessionLinks  BotFlowSession[]
+  conversations Conversation[]
+  campaigns     Campaign[]
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId, isActive])
+}
+
+model BotFlowSession {
+  flowId    String @db.UniqueIdentifier
+  sessionId String @db.UniqueIdentifier
+  priority  Int      @default(100)
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  flow    BotFlow         @relation(fields: [flowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([flowId, sessionId])
+  @@index([sessionId, isEnabled])
+}
+
+model Conversation {
+  id                  String    @id @default(uuid()) @db.UniqueIdentifier
+  tenantId            String @db.UniqueIdentifier
+  sessionId           String @db.UniqueIdentifier
+  flowId              String? @db.UniqueIdentifier
+  flowNodeId          String? @db.NVarChar(191)
+  flowAwaitingVariable String? @db.NVarChar(191)
+  flowVariablesPayload Bytes?
+  flowUpdatedAt       DateTime?
+  remoteJid           String @db.NVarChar(191)
+  phoneE164           String? @db.NVarChar(191)
+  displayName         String? @db.NVarChar(191)
+  status              String    @default("OPEN") @db.NVarChar(32)
+  unreadCount         Int       @default(0)
+  tagsPayload         Bytes?
+  closedAt            DateTime?
+  lastReadAt          DateTime?
+  isBotActive         Boolean   @default(true) @map("is_bot_active")
+  humanModeSince      DateTime?
+  assignedAgentId     String? @db.UniqueIdentifier
+  lastInboundMessageId String? @db.NVarChar(191)
+  lastOutboundMessageId String? @db.NVarChar(191)
+  lastMessageAt       DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session       WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flow          BotFlow?        @relation(fields: [flowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assignedAgent AppUser?        @relation("ConversationAgent", fields: [assignedAgentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  messages      WhatsAppMessage[]
+  notes         ConversationNote[]
+  outboxItems   ConversationOutbox[]
+
+  @@unique([sessionId, remoteJid])
+  @@index([tenantId, isBotActive, lastMessageAt])
+  @@index([tenantId, status, lastMessageAt])
+  @@index([assignedAgentId])
+}
+
+
+model ConversationNote {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId       String @db.UniqueIdentifier
+  conversationId String @db.UniqueIdentifier
+  authorUserId   String @db.UniqueIdentifier
+  text           String @db.NVarChar(2000)
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  author       AppUser      @relation("ConversationNoteAuthor", fields: [authorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, conversationId, createdAt])
+}
+
+model ConversationOutbox {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId       String @db.UniqueIdentifier
+  conversationId String @db.UniqueIdentifier
+  sessionId      String @db.UniqueIdentifier
+  remoteJid      String @db.NVarChar(191)
+  actorUserId    String @db.UniqueIdentifier
+  text           String @db.NVarChar(Max)
+  status         String   @default("PENDING") @db.NVarChar(32)
+  attemptCount   Int      @default(0)
+  maxAttempts    Int      @default(3)
+  availableAt    DateTime @default(now())
+  processingAt   DateTime?
+  sentAt         DateTime?
+  failedAt       DateTime?
+  whatsappMessageId String? @db.NVarChar(191)
+  lastErrorCode  String? @db.NVarChar(191)
+  lastErrorMessage String? @db.NVarChar(2000)
+  lockedBy       String? @db.NVarChar(191)
+  lockExpiresAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  session      WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  actor        AppUser      @relation("ConversationOutboxActor", fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([sessionId, status, availableAt])
+  @@index([conversationId, createdAt])
+}
+
+model Campaign {
+  id             String    @id @default(uuid()) @db.UniqueIdentifier
+  tenantId       String @db.UniqueIdentifier
+  flowId         String? @db.UniqueIdentifier
+  mediaAssetId   String? @db.UniqueIdentifier
+  name           String @db.NVarChar(191)
+  status         String    @default("DRAFT") @db.NVarChar(191)
+  messagePayload Bytes
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  pausedAt       DateTime?
+  cancelledAt    DateTime?
+  totalMessages  Int       @default(0)
+  sentMessages   Int       @default(0)
+  failedMessages Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flow         BotFlow?          @relation(fields: [flowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaAsset   MediaAsset?       @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessionLinks CampaignSession[]
+  queueItems   MessageQueue[]
+  preparationJobs MediaPreparationJob[]
+  messages       WhatsAppMessage[]
+  messageAttempts MessageAttempt[]
+  deadLetterMessages DeadLetterMessage[]
+
+  @@index([tenantId, status, scheduledAt])
+}
+
+model CampaignSession {
+  campaignId String @db.UniqueIdentifier
+  sessionId  String @db.UniqueIdentifier
+  priority   Int      @default(100)
+  isEnabled  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  campaign Campaign        @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session  WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([campaignId, sessionId])
+  @@index([sessionId, isEnabled])
+}
+
+model MediaAsset {
+  id               String    @id @default(uuid()) @db.UniqueIdentifier
+  tenantId         String @db.UniqueIdentifier
+  fileName         String @db.NVarChar(191)
+  mimeType         String @db.NVarChar(191)
+  mediaKind        String @db.NVarChar(191)
+  sizeBytes        Int?
+  sha256           String? @db.NVarChar(191)
+  sourceObjectKey  String? @db.NVarChar(1000)
+  status           String    @default("TEMPORARY") @db.NVarChar(191)
+  sourceDeletedAt  DateTime?
+  cleanupError     String? @db.NVarChar(Max)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  uploads    MediaUpload[]
+  campaigns Campaign[]
+  queueItems MessageQueue[]
+  preparationJobs MediaPreparationJob[]
+
+  @@index([tenantId, status])
+  @@index([sha256])
+}
+
+model MediaUpload {
+  id               String    @id @default(uuid()) @db.UniqueIdentifier
+  mediaAssetId     String @db.UniqueIdentifier
+  sessionId        String @db.UniqueIdentifier
+  mediaType        String @db.NVarChar(191)
+  protoPayload     Bytes
+  metadataPayload  Bytes
+  sourceMessageId  String? @db.NVarChar(191)
+  preparedAt       DateTime  @default(now())
+  expiresAt        DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  mediaAsset MediaAsset      @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session    WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([mediaAssetId, sessionId])
+  @@index([sessionId, expiresAt])
+}
+
+
+model MediaPreparationJob {
+  id            String    @id @default(uuid()) @db.UniqueIdentifier
+  tenantId      String @db.UniqueIdentifier
+  campaignId    String @db.UniqueIdentifier
+  mediaAssetId  String @db.UniqueIdentifier
+  sessionId     String @db.UniqueIdentifier
+  status        String    @default("PENDING") @db.NVarChar(191)
+  attemptCount  Int       @default(0)
+  maxAttempts   Int       @default(5)
+  availableAt   DateTime  @default(now())
+  processingAt  DateTime?
+  preparedAt    DateTime?
+  failedAt      DateTime?
+  lockedBy      String? @db.NVarChar(191)
+  lockExpiresAt DateTime?
+  lastError     String? @db.NVarChar(Max)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign   Campaign        @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaAsset MediaAsset      @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session    WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([campaignId, sessionId])
+  @@index([sessionId, status, availableAt])
+  @@index([campaignId, status])
+  @@index([lockExpiresAt])
+}
+
+model MessageQueue {
+  id                  String    @id @default(uuid()) @db.UniqueIdentifier
+  tenantId            String @db.UniqueIdentifier
+  campaignId          String @db.UniqueIdentifier
+  assignedSessionId   String? @db.UniqueIdentifier
+  mediaAssetId        String? @db.UniqueIdentifier
+  contactName         String? @db.NVarChar(191)
+  recipientRaw        String @db.NVarChar(1000)
+  recipientE164       String? @db.NVarChar(191)
+  recipientJid        String? @db.NVarChar(191)
+  messageType         String @db.NVarChar(191)
+  payload             Bytes?
+  status              String    @default("PENDING") @db.NVarChar(191)
+  priority            Int       @default(100)
+  attemptCount        Int       @default(0)
+  maxAttempts         Int       @default(5)
+  availableAt         DateTime  @default(now())
+  processingAt        DateTime?
+  sentAt              DateTime?
+  failedAt            DateTime?
+  lockedBy            String? @db.NVarChar(191)
+  lockExpiresAt       DateTime?
+  idempotencyKey      String @db.NVarChar(191)
+  clientMessageId     String? @db.NVarChar(191)
+  sentMessageId       String? @db.NVarChar(191)
+  lastErrorCode       String? @db.NVarChar(191)
+  lastErrorMessage    String? @db.NVarChar(Max)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign        Campaign         @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assignedSession WhatsAppSession? @relation("AssignedSession", fields: [assignedSessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaAsset      MediaAsset?      @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  attempts        MessageAttempt[]
+  storedMessages  WhatsAppMessage[]
+  deadLetter      DeadLetterMessage?
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([status, availableAt, priority])
+  @@index([assignedSessionId, status, availableAt])
+  @@index([campaignId, status])
+  @@index([lockExpiresAt])
+}
+
+model WhatsAppMessage {
+  id                  String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId            String @db.UniqueIdentifier
+  sessionId           String @db.UniqueIdentifier
+  conversationId      String? @db.UniqueIdentifier
+  campaignId          String? @db.UniqueIdentifier
+  queueItemId         String? @db.UniqueIdentifier
+  whatsappMessageId   String @db.NVarChar(191)
+  remoteJid           String @db.NVarChar(191)
+  participantJid      String? @db.NVarChar(191)
+  direction           String @db.NVarChar(191)
+  messageType         String @db.NVarChar(191)
+  status              String   @default("RECEIVED") @db.NVarChar(191)
+  fromMe              Boolean  @default(false)
+  payload              Bytes
+  messageTimestamp    DateTime
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session      WhatsAppSession  @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  conversation Conversation?    @relation(fields: [conversationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign     Campaign?        @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  queueItem    MessageQueue?    @relation(fields: [queueItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  receipts     MessageReceipt[]
+
+  @@unique([sessionId, whatsappMessageId])
+  @@index([tenantId, remoteJid, messageTimestamp])
+  @@index([conversationId, messageTimestamp])
+  @@index([queueItemId])
+  @@index([status, updatedAt])
+}
+
+model MessageReceipt {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  messageId      String @db.UniqueIdentifier
+  receiptType    String @db.NVarChar(191)
+  participantJid String? @db.NVarChar(191)
+  receiptAt      DateTime
+  payload        Bytes?
+  createdAt      DateTime @default(now())
+
+  message WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([messageId, receiptAt])
+  @@index([receiptType, receiptAt])
+}
+
+model ProcessedInboundEvent {
+  tenantId          String @db.UniqueIdentifier
+  sessionId         String @db.UniqueIdentifier
+  whatsappMessageId String @db.NVarChar(191)
+  responseMessageId String? @db.NVarChar(191)
+  processedAt       DateTime @default(now())
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([sessionId, whatsappMessageId])
+  @@index([tenantId, processedAt])
+}
+
+model MessageAttempt {
+  id                String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId          String @db.UniqueIdentifier
+  queueItemId       String @db.UniqueIdentifier
+  campaignId        String @db.UniqueIdentifier
+  sessionId         String @db.UniqueIdentifier
+  clientMessageId   String @db.NVarChar(191)
+  whatsappMessageId String? @db.NVarChar(191)
+  state             String   @default("STARTED") @db.NVarChar(191)
+  startedAt         DateTime @default(now())
+  submittedAt       DateTime?
+  acknowledgedAt    DateTime?
+  completedAt       DateTime?
+  failedAt          DateTime?
+  reconcileAfter    DateTime?
+  errorCode         String? @db.NVarChar(191)
+  errorMessage      String? @db.NVarChar(Max)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  queueItem MessageQueue    @relation(fields: [queueItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign  Campaign        @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session   WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([sessionId, clientMessageId])
+  @@index([queueItemId, state])
+  @@index([state, reconcileAfter])
+  @@index([campaignId, state])
+}
+
+model DeadLetterMessage {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId       String @db.UniqueIdentifier
+  queueItemId    String   @unique @db.UniqueIdentifier
+  campaignId     String @db.UniqueIdentifier
+  sessionId      String? @db.UniqueIdentifier
+  recipientE164  String? @db.NVarChar(191)
+  reasonCode     String @db.NVarChar(191)
+  reasonMessage  String @db.NVarChar(Max)
+  payload        Bytes?
+  attemptCount   Int
+  failedAt       DateTime @default(now())
+  resolvedAt     DateTime?
+  resolution     String? @db.NVarChar(Max)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  queueItem MessageQueue     @relation(fields: [queueItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign  Campaign         @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session   WhatsAppSession? @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, failedAt])
+  @@index([campaignId, resolvedAt])
+}
+
+model RefreshSession {
+  id           String    @id @default(uuid()) @db.UniqueIdentifier
+  tenantId     String @db.UniqueIdentifier
+  userId       String @db.UniqueIdentifier
+  familyId     String @db.UniqueIdentifier
+  tokenHash    String    @unique @db.NVarChar(191)
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String? @db.UniqueIdentifier
+  ipAddress    String? @db.NVarChar(191)
+  userAgent    String? @db.NVarChar(1000)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user   AppUser @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([familyId])
+  @@index([tenantId, createdAt])
+}
+
+model AuditLog {
+  id              String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId        String @db.UniqueIdentifier
+  actorUserId     String? @db.UniqueIdentifier
+  action          String @db.NVarChar(191)
+  entityType      String @db.NVarChar(191)
+  entityId        String? @db.NVarChar(191)
+  result          String   @default("SUCCESS") @db.NVarChar(191)
+  requestId       String? @db.NVarChar(191)
+  ipAddress       String? @db.NVarChar(191)
+  userAgent       String? @db.NVarChar(1000)
+  metadataPayload Bytes?
+  createdAt       DateTime @default(now())
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  actor  AppUser? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+}
+
+
+
+model IntegrationApiKey {
+  id              String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId        String @db.UniqueIdentifier
+  createdByUserId String @db.UniqueIdentifier
+  name            String @db.NVarChar(191)
+  keyPrefix       String @db.NVarChar(32)
+  keyHash         String @db.NVarChar(128)
+  permissionsPayload Bytes
+  status          String   @default("ACTIVE") @db.NVarChar(32)
+  expiresAt       DateTime?
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy AppUser @relation("IntegrationApiKeyCreator", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requestLogs IntegrationRequestLog[]
+
+  @@unique([tenantId, name])
+  @@unique([keyHash])
+  @@index([tenantId, status])
+  @@index([expiresAt])
+}
+
+model WebhookEndpoint {
+  id              String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId        String @db.UniqueIdentifier
+  createdByUserId String @db.UniqueIdentifier
+  name            String @db.NVarChar(191)
+  url             String @db.NVarChar(1000)
+  secretPayload   Bytes
+  eventsPayload   Bytes
+  status          String   @default("ACTIVE") @db.NVarChar(32)
+  lastSuccessAt   DateTime?
+  lastFailureAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy AppUser @relation("WebhookEndpointCreator", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deliveries WebhookDelivery[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, status])
+}
+
+model WebhookDelivery {
+  id            String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId      String @db.UniqueIdentifier
+  webhookId     String @db.UniqueIdentifier
+  eventType     String @db.NVarChar(191)
+  aggregateType String? @db.NVarChar(191)
+  aggregateId   String? @db.NVarChar(191)
+  payload       Bytes
+  status        String   @default("PENDING") @db.NVarChar(32)
+  attemptCount  Int      @default(0)
+  maxAttempts   Int      @default(5)
+  availableAt   DateTime @default(now())
+  processingAt  DateTime?
+  deliveredAt   DateTime?
+  failedAt      DateTime?
+  responseStatus Int?
+  responseBody  String? @db.NVarChar(2000)
+  lastError     String? @db.NVarChar(2000)
+  lockedBy      String? @db.NVarChar(191)
+  lockExpiresAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  webhook WebhookEndpoint @relation(fields: [webhookId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status, availableAt])
+  @@index([tenantId, createdAt])
+  @@index([webhookId, createdAt])
+}
+
+model IntegrationRequestLog {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId       String @db.UniqueIdentifier
+  apiKeyId       String? @db.UniqueIdentifier
+  endpoint       String @db.NVarChar(500)
+  method         String @db.NVarChar(16)
+  statusCode     Int
+  durationMs     Int
+  requestId      String? @db.NVarChar(191)
+  idempotencyKey String? @db.NVarChar(191)
+  remoteIp       String? @db.NVarChar(191)
+  errorMessage   String? @db.NVarChar(2000)
+  createdAt      DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  apiKey IntegrationApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, createdAt])
+  @@index([apiKeyId, createdAt])
+  @@index([statusCode, createdAt])
+}
+
+
+model ExternalConnector {
+  id                     String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId               String @db.UniqueIdentifier
+  createdByUserId        String @db.UniqueIdentifier
+  name                   String @db.NVarChar(191)
+  purpose                String   @default("GENERAL") @db.NVarChar(32)
+  method                 String   @default("GET") @db.NVarChar(16)
+  urlTemplate            String @db.NVarChar(1000)
+  headersPayload         Bytes
+  bodyTemplate           String? @db.NVarChar(Max)
+  authType               String   @default("NONE") @db.NVarChar(32)
+  authName               String? @db.NVarChar(191)
+  secretPayload          Bytes?
+  timeoutMs              Int      @default(10000)
+  itemsPath              String? @db.NVarChar(500)
+  phonePath              String? @db.NVarChar(500)
+  namePath               String? @db.NVarChar(500)
+  contactMappingsPayload Bytes
+  status                 String   @default("ACTIVE") @db.NVarChar(32)
+  lastSuccessAt          DateTime?
+  lastFailureAt          DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy AppUser @relation("ExternalConnectorCreator", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  executions ExternalConnectorExecution[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, purpose, status])
+  @@index([createdByUserId])
+}
+
+model ExternalConnectorExecution {
+  id              String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId        String @db.UniqueIdentifier
+  connectorId     String @db.UniqueIdentifier
+  contextType     String @db.NVarChar(32)
+  contextId       String? @db.NVarChar(191)
+  outcome         String @db.NVarChar(32)
+  method          String @db.NVarChar(16)
+  requestUrl      String @db.NVarChar(1000)
+  responseStatus  Int?
+  durationMs      Int
+  mappedCount     Int      @default(0)
+  responsePreview String? @db.NVarChar(2000)
+  errorMessage    String? @db.NVarChar(2000)
+  createdAt       DateTime @default(now())
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  connector ExternalConnector @relation(fields: [connectorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tenantId, createdAt])
+  @@index([connectorId, createdAt])
+  @@index([outcome, createdAt])
+}
+
+model RateLimitBucket {
+  key       String   @id @db.NVarChar(191)
+  count     Int      @default(0)
+  resetAt   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([resetAt])
+}
+
+model TenantCapacityPolicy {
+  tenantId               String   @id @db.UniqueIdentifier
+  maxSessions            Int      @default(5)
+  maxConcurrentCampaigns Int      @default(3)
+  maxCampaignContacts    Int      @default(50000)
+  maxPendingMessages     Int      @default(100000)
+  monthlyMessageLimit    Int      @default(1000000)
+  backpressureEnabled    Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model TenantUsageMonthly {
+  tenantId           String   @db.UniqueIdentifier
+  period             String   @db.NVarChar(191)
+  messagesReserved   Int      @default(0)
+  messagesSent       Int      @default(0)
+  messagesFailed     Int      @default(0)
+  mediaBytesUploaded BigInt   @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([tenantId, period])
+  @@index([period, messagesSent])
+}
+
+model TenantUsageEvent {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  tenantId    String   @db.UniqueIdentifier
+  period      String   @db.NVarChar(191)
+  eventType   String   @db.NVarChar(191)
+  referenceId String   @db.NVarChar(191)
+  units       Int
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenantId, eventType, referenceId])
+  @@index([tenantId, period, eventType])
+}
+
+model OutboxEvent {
+  id              String    @id @default(uuid()) @db.UniqueIdentifier
+  tenantId        String?   @db.UniqueIdentifier
+  aggregateType   String    @db.NVarChar(191)
+  aggregateId     String    @db.NVarChar(191)
+  eventType       String    @db.NVarChar(191)
+  payload         Bytes
+  status          String    @default("PENDING") @db.NVarChar(191)
+  attemptCount    Int       @default(0)
+  maxAttempts     Int       @default(12)
+  availableAt     DateTime  @default(now())
+  lockedBy        String?   @db.NVarChar(191)
+  lockExpiresAt   DateTime?
+  publishedAt     DateTime?
+  lastError       String?   @db.NVarChar(Max)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status, availableAt, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([lockExpiresAt])
+}
+
+model WorkerNode {
+  id              String   @id @db.NVarChar(191)
+  shardId         Int
+  shardCount      Int
+  status          String   @default("ACTIVE") @db.NVarChar(191)
+  lastHeartbeatAt DateTime @default(now())
+  leaseExpiresAt  DateTime
+  metadata        Bytes?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, leaseExpiresAt])
+  @@index([shardId, shardCount])
+}

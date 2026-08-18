@@ -1,0 +1,857 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "__PROVIDER__"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) __ID_NATIVE__
+  name      String __SHORT_NATIVE__
+  status    String   @default("ACTIVE") __SHORT_NATIVE__
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         AppUser[]
+  sessions      WhatsAppSession[]
+  flows         BotFlow[]
+  conversations Conversation[]
+  conversationNotes ConversationNote[]
+  conversationOutbox ConversationOutbox[]
+  integrationApiKeys IntegrationApiKey[]
+  webhookEndpoints WebhookEndpoint[]
+  webhookDeliveries WebhookDelivery[]
+  integrationRequestLogs IntegrationRequestLog[]
+  externalConnectors ExternalConnector[]
+  externalConnectorExecutions ExternalConnectorExecution[]
+  campaigns     Campaign[]
+  mediaAssets   MediaAsset[]
+  queueItems    MessageQueue[]
+  preparationJobs MediaPreparationJob[]
+  refreshSessions RefreshSession[]
+  auditLogs AuditLog[]
+  whatsappMessages WhatsAppMessage[]
+  processedInboundEvents ProcessedInboundEvent[]
+  messageAttempts MessageAttempt[]
+  deadLetterMessages DeadLetterMessage[]
+  capacityPolicy TenantCapacityPolicy?
+  monthlyUsage TenantUsageMonthly[]
+  usageEvents TenantUsageEvent[]
+  outboxEvents OutboxEvent[]
+
+  @@index([status])
+}
+
+model AppUser {
+  id           String   @id @default(uuid()) __ID_NATIVE__
+  tenantId     String __ID_NATIVE__
+  email        String   @unique __SHORT_NATIVE__
+  displayName  String __SHORT_NATIVE__
+  passwordHash String __SHORT_NATIVE__
+  role         String   @default("TENANT_ADMIN") __SHORT_NATIVE__
+  status       String   @default("ACTIVE") __SHORT_NATIVE__
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant                Tenant              @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ownedSessions         WhatsAppSession[]    @relation("SessionOwner")
+  assignedConversations Conversation[]       @relation("ConversationAgent")
+  conversationNotes ConversationNote[]         @relation("ConversationNoteAuthor")
+  conversationOutbox ConversationOutbox[]      @relation("ConversationOutboxActor")
+  createdIntegrationApiKeys IntegrationApiKey[] @relation("IntegrationApiKeyCreator")
+  createdWebhookEndpoints WebhookEndpoint[]     @relation("WebhookEndpointCreator")
+  createdExternalConnectors ExternalConnector[]     @relation("ExternalConnectorCreator")
+  refreshSessions      RefreshSession[]
+  auditLogs            AuditLog[]              @relation("AuditActor")
+
+  @@index([tenantId, status])
+}
+
+model WhatsAppSession {
+  id               String    @id @default(uuid()) __ID_NATIVE__
+  tenantId         String __ID_NATIVE__
+  ownerUserId      String __ID_NATIVE__
+  name             String __SHORT_NATIVE__
+  expectedPhoneE164 String? __SHORT_NATIVE__
+  phoneE164        String? __SHORT_NATIVE__
+  whatsappJid      String? __SHORT_NATIVE__
+  pairingMethod    String    @default("QR") __SHORT_NATIVE__
+  pairingCode      String? __SHORT_NATIVE__
+  pairingCodeUpdatedAt DateTime?
+  status           String    @default("NEW") __SHORT_NATIVE__
+  isBotActive      Boolean   @default(true) @map("is_bot_active")
+  disconnectReason String? __MEDIUM_NATIVE__
+  lastConnectionCode Int?
+  lastConnectionError String? __LONG_NATIVE__
+  lastConnectionAt DateTime?
+  qrCode           String? __LONG_NATIVE__
+  qrUpdatedAt      DateTime?
+  lastHeartbeatAt  DateTime?
+  connectedAt      DateTime?
+  disconnectedAt   DateTime?
+  leaseOwner       String? __SHORT_NATIVE__
+  leaseExpiresAt   DateTime?
+  revision         Int       @default(0)
+  shardKey        Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  owner         AppUser               @relation("SessionOwner", fields: [ownerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  credential    BaileysCredential?
+  authKeys      BaileysAuthKey[]
+  flowLinks     BotFlowSession[]
+  campaignLinks CampaignSession[]
+  conversations Conversation[]
+  conversationOutbox ConversationOutbox[]
+  mediaUploads  MediaUpload[]
+  queueItems    MessageQueue[]        @relation("AssignedSession")
+  preparationJobs MediaPreparationJob[]
+  messages WhatsAppMessage[]
+  processedInboundEvents ProcessedInboundEvent[]
+  messageAttempts MessageAttempt[]
+  deadLetterMessages DeadLetterMessage[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, ownerUserId, status, isBotActive])
+  @@index([leaseExpiresAt])
+  @@index([shardKey, status, leaseExpiresAt])
+}
+
+model BaileysCredential {
+  sessionId String   @id __ID_NATIVE__
+  payload   Bytes
+  revision  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model BaileysAuthKey {
+  sessionId String __ID_NATIVE__
+  category  String __SHORT_NATIVE__
+  keyId     String __SHORT_NATIVE__
+  payload   Bytes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([sessionId, category, keyId])
+  @@index([sessionId, category])
+}
+
+model BotFlow {
+  id                String   @id @default(uuid()) __ID_NATIVE__
+  tenantId          String __ID_NATIVE__
+  name              String __SHORT_NATIVE__
+  description       String? __LONG_NATIVE__
+  version           Int      @default(1)
+  isActive          Boolean  @default(true)
+  definitionPayload Bytes
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessionLinks  BotFlowSession[]
+  conversations Conversation[]
+  campaigns     Campaign[]
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId, isActive])
+}
+
+model BotFlowSession {
+  flowId    String __ID_NATIVE__
+  sessionId String __ID_NATIVE__
+  priority  Int      @default(100)
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  flow    BotFlow         @relation(fields: [flowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([flowId, sessionId])
+  @@index([sessionId, isEnabled])
+}
+
+model Conversation {
+  id                  String    @id @default(uuid()) __ID_NATIVE__
+  tenantId            String __ID_NATIVE__
+  sessionId           String __ID_NATIVE__
+  flowId              String? __ID_NATIVE__
+  flowNodeId          String? __SHORT_NATIVE__
+  flowAwaitingVariable String? __SHORT_NATIVE__
+  flowVariablesPayload Bytes?
+  flowUpdatedAt       DateTime?
+  remoteJid           String __SHORT_NATIVE__
+  phoneE164           String? __SHORT_NATIVE__
+  displayName         String? __SHORT_NATIVE__
+  status              String    @default("OPEN") __V32_NATIVE__
+  unreadCount         Int       @default(0)
+  tagsPayload         Bytes?
+  closedAt            DateTime?
+  lastReadAt          DateTime?
+  isBotActive         Boolean   @default(true) @map("is_bot_active")
+  humanModeSince      DateTime?
+  assignedAgentId     String? __ID_NATIVE__
+  lastInboundMessageId String? __SHORT_NATIVE__
+  lastOutboundMessageId String? __SHORT_NATIVE__
+  lastMessageAt       DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session       WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flow          BotFlow?        @relation(fields: [flowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assignedAgent AppUser?        @relation("ConversationAgent", fields: [assignedAgentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  messages      WhatsAppMessage[]
+  notes         ConversationNote[]
+  outboxItems   ConversationOutbox[]
+
+  @@unique([sessionId, remoteJid])
+  @@index([tenantId, isBotActive, lastMessageAt])
+  @@index([tenantId, status, lastMessageAt])
+  @@index([assignedAgentId])
+}
+
+
+model ConversationNote {
+  id             String   @id @default(uuid()) __ID_NATIVE__
+  tenantId       String __ID_NATIVE__
+  conversationId String __ID_NATIVE__
+  authorUserId   String __ID_NATIVE__
+  text           String __V2000_NATIVE__
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  author       AppUser      @relation("ConversationNoteAuthor", fields: [authorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, conversationId, createdAt])
+}
+
+model ConversationOutbox {
+  id             String   @id @default(uuid()) __ID_NATIVE__
+  tenantId       String __ID_NATIVE__
+  conversationId String __ID_NATIVE__
+  sessionId      String __ID_NATIVE__
+  remoteJid      String __SHORT_NATIVE__
+  actorUserId    String __ID_NATIVE__
+  text           String __LONG_NATIVE__
+  status         String   @default("PENDING") __V32_NATIVE__
+  attemptCount   Int      @default(0)
+  maxAttempts    Int      @default(3)
+  availableAt    DateTime @default(now())
+  processingAt   DateTime?
+  sentAt         DateTime?
+  failedAt       DateTime?
+  whatsappMessageId String? __SHORT_NATIVE__
+  lastErrorCode  String? __SHORT_NATIVE__
+  lastErrorMessage String? __V2000_NATIVE__
+  lockedBy       String? __SHORT_NATIVE__
+  lockExpiresAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  session      WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  actor        AppUser      @relation("ConversationOutboxActor", fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([sessionId, status, availableAt])
+  @@index([conversationId, createdAt])
+}
+
+model Campaign {
+  id             String    @id @default(uuid()) __ID_NATIVE__
+  tenantId       String __ID_NATIVE__
+  flowId         String? __ID_NATIVE__
+  mediaAssetId   String? __ID_NATIVE__
+  name           String __SHORT_NATIVE__
+  status         String    @default("DRAFT") __SHORT_NATIVE__
+  messagePayload Bytes
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  pausedAt       DateTime?
+  cancelledAt    DateTime?
+  totalMessages  Int       @default(0)
+  sentMessages   Int       @default(0)
+  failedMessages Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flow         BotFlow?          @relation(fields: [flowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaAsset   MediaAsset?       @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessionLinks CampaignSession[]
+  queueItems   MessageQueue[]
+  preparationJobs MediaPreparationJob[]
+  messages       WhatsAppMessage[]
+  messageAttempts MessageAttempt[]
+  deadLetterMessages DeadLetterMessage[]
+
+  @@index([tenantId, status, scheduledAt])
+}
+
+model CampaignSession {
+  campaignId String __ID_NATIVE__
+  sessionId  String __ID_NATIVE__
+  priority   Int      @default(100)
+  isEnabled  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  campaign Campaign        @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session  WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([campaignId, sessionId])
+  @@index([sessionId, isEnabled])
+}
+
+model MediaAsset {
+  id               String    @id @default(uuid()) __ID_NATIVE__
+  tenantId         String __ID_NATIVE__
+  fileName         String __SHORT_NATIVE__
+  mimeType         String __SHORT_NATIVE__
+  mediaKind        String __SHORT_NATIVE__
+  sizeBytes        Int?
+  sha256           String? __SHORT_NATIVE__
+  sourceObjectKey  String? __MEDIUM_NATIVE__
+  status           String    @default("TEMPORARY") __SHORT_NATIVE__
+  sourceDeletedAt  DateTime?
+  cleanupError     String? __LONG_NATIVE__
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  uploads    MediaUpload[]
+  campaigns Campaign[]
+  queueItems MessageQueue[]
+  preparationJobs MediaPreparationJob[]
+
+  @@index([tenantId, status])
+  @@index([sha256])
+}
+
+model MediaUpload {
+  id               String    @id @default(uuid()) __ID_NATIVE__
+  mediaAssetId     String __ID_NATIVE__
+  sessionId        String __ID_NATIVE__
+  mediaType        String __SHORT_NATIVE__
+  protoPayload     Bytes
+  metadataPayload  Bytes
+  sourceMessageId  String? __SHORT_NATIVE__
+  preparedAt       DateTime  @default(now())
+  expiresAt        DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  mediaAsset MediaAsset      @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session    WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([mediaAssetId, sessionId])
+  @@index([sessionId, expiresAt])
+}
+
+
+model MediaPreparationJob {
+  id            String    @id @default(uuid()) __ID_NATIVE__
+  tenantId      String __ID_NATIVE__
+  campaignId    String __ID_NATIVE__
+  mediaAssetId  String __ID_NATIVE__
+  sessionId     String __ID_NATIVE__
+  status        String    @default("PENDING") __SHORT_NATIVE__
+  attemptCount  Int       @default(0)
+  maxAttempts   Int       @default(5)
+  availableAt   DateTime  @default(now())
+  processingAt  DateTime?
+  preparedAt    DateTime?
+  failedAt      DateTime?
+  lockedBy      String? __SHORT_NATIVE__
+  lockExpiresAt DateTime?
+  lastError     String? __LONG_NATIVE__
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign   Campaign        @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaAsset MediaAsset      @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session    WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([campaignId, sessionId])
+  @@index([sessionId, status, availableAt])
+  @@index([campaignId, status])
+  @@index([lockExpiresAt])
+}
+
+model MessageQueue {
+  id                  String    @id @default(uuid()) __ID_NATIVE__
+  tenantId            String __ID_NATIVE__
+  campaignId          String __ID_NATIVE__
+  assignedSessionId   String? __ID_NATIVE__
+  mediaAssetId        String? __ID_NATIVE__
+  contactName         String? __SHORT_NATIVE__
+  recipientRaw        String __MEDIUM_NATIVE__
+  recipientE164       String? __SHORT_NATIVE__
+  recipientJid        String? __SHORT_NATIVE__
+  messageType         String __SHORT_NATIVE__
+  payload             Bytes?
+  status              String    @default("PENDING") __SHORT_NATIVE__
+  priority            Int       @default(100)
+  attemptCount        Int       @default(0)
+  maxAttempts         Int       @default(5)
+  availableAt         DateTime  @default(now())
+  processingAt        DateTime?
+  sentAt              DateTime?
+  failedAt            DateTime?
+  lockedBy            String? __SHORT_NATIVE__
+  lockExpiresAt       DateTime?
+  idempotencyKey      String __SHORT_NATIVE__
+  clientMessageId     String? __SHORT_NATIVE__
+  sentMessageId       String? __SHORT_NATIVE__
+  lastErrorCode       String? __SHORT_NATIVE__
+  lastErrorMessage    String? __LONG_NATIVE__
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign        Campaign         @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assignedSession WhatsAppSession? @relation("AssignedSession", fields: [assignedSessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaAsset      MediaAsset?      @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  attempts        MessageAttempt[]
+  storedMessages  WhatsAppMessage[]
+  deadLetter      DeadLetterMessage?
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([status, availableAt, priority])
+  @@index([assignedSessionId, status, availableAt])
+  @@index([campaignId, status])
+  @@index([lockExpiresAt])
+}
+
+model WhatsAppMessage {
+  id                  String   @id @default(uuid()) __ID_NATIVE__
+  tenantId            String __ID_NATIVE__
+  sessionId           String __ID_NATIVE__
+  conversationId      String? __ID_NATIVE__
+  campaignId          String? __ID_NATIVE__
+  queueItemId         String? __ID_NATIVE__
+  whatsappMessageId   String __SHORT_NATIVE__
+  remoteJid           String __SHORT_NATIVE__
+  participantJid      String? __SHORT_NATIVE__
+  direction           String __SHORT_NATIVE__
+  messageType         String __SHORT_NATIVE__
+  status              String   @default("RECEIVED") __SHORT_NATIVE__
+  fromMe              Boolean  @default(false)
+  payload              Bytes
+  messageTimestamp    DateTime
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session      WhatsAppSession  @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  conversation Conversation?    @relation(fields: [conversationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign     Campaign?        @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  queueItem    MessageQueue?    @relation(fields: [queueItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  receipts     MessageReceipt[]
+
+  @@unique([sessionId, whatsappMessageId])
+  @@index([tenantId, remoteJid, messageTimestamp])
+  @@index([conversationId, messageTimestamp])
+  @@index([queueItemId])
+  @@index([status, updatedAt])
+}
+
+model MessageReceipt {
+  id             String   @id @default(uuid()) __ID_NATIVE__
+  messageId      String __ID_NATIVE__
+  receiptType    String __SHORT_NATIVE__
+  participantJid String? __SHORT_NATIVE__
+  receiptAt      DateTime
+  payload        Bytes?
+  createdAt      DateTime @default(now())
+
+  message WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([messageId, receiptAt])
+  @@index([receiptType, receiptAt])
+}
+
+model ProcessedInboundEvent {
+  tenantId          String __ID_NATIVE__
+  sessionId         String __ID_NATIVE__
+  whatsappMessageId String __SHORT_NATIVE__
+  responseMessageId String? __SHORT_NATIVE__
+  processedAt       DateTime @default(now())
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([sessionId, whatsappMessageId])
+  @@index([tenantId, processedAt])
+}
+
+model MessageAttempt {
+  id                String   @id @default(uuid()) __ID_NATIVE__
+  tenantId          String __ID_NATIVE__
+  queueItemId       String __ID_NATIVE__
+  campaignId        String __ID_NATIVE__
+  sessionId         String __ID_NATIVE__
+  clientMessageId   String __SHORT_NATIVE__
+  whatsappMessageId String? __SHORT_NATIVE__
+  state             String   @default("STARTED") __SHORT_NATIVE__
+  startedAt         DateTime @default(now())
+  submittedAt       DateTime?
+  acknowledgedAt    DateTime?
+  completedAt       DateTime?
+  failedAt          DateTime?
+  reconcileAfter    DateTime?
+  errorCode         String? __SHORT_NATIVE__
+  errorMessage      String? __LONG_NATIVE__
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  queueItem MessageQueue    @relation(fields: [queueItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign  Campaign        @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session   WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([sessionId, clientMessageId])
+  @@index([queueItemId, state])
+  @@index([state, reconcileAfter])
+  @@index([campaignId, state])
+}
+
+model DeadLetterMessage {
+  id             String   @id @default(uuid()) __ID_NATIVE__
+  tenantId       String __ID_NATIVE__
+  queueItemId    String   @unique __ID_NATIVE__
+  campaignId     String __ID_NATIVE__
+  sessionId      String? __ID_NATIVE__
+  recipientE164  String? __SHORT_NATIVE__
+  reasonCode     String __SHORT_NATIVE__
+  reasonMessage  String __LONG_NATIVE__
+  payload        Bytes?
+  attemptCount   Int
+  failedAt       DateTime @default(now())
+  resolvedAt     DateTime?
+  resolution     String? __LONG_NATIVE__
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  queueItem MessageQueue     @relation(fields: [queueItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign  Campaign         @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session   WhatsAppSession? @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, failedAt])
+  @@index([campaignId, resolvedAt])
+}
+
+model RefreshSession {
+  id           String    @id @default(uuid()) __ID_NATIVE__
+  tenantId     String __ID_NATIVE__
+  userId       String __ID_NATIVE__
+  familyId     String __ID_NATIVE__
+  tokenHash    String    @unique __SHORT_NATIVE__
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String? __ID_NATIVE__
+  ipAddress    String? __SHORT_NATIVE__
+  userAgent    String? __MEDIUM_NATIVE__
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user   AppUser @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([familyId])
+  @@index([tenantId, createdAt])
+}
+
+model AuditLog {
+  id              String   @id @default(uuid()) __ID_NATIVE__
+  tenantId        String __ID_NATIVE__
+  actorUserId     String? __ID_NATIVE__
+  action          String __SHORT_NATIVE__
+  entityType      String __SHORT_NATIVE__
+  entityId        String? __SHORT_NATIVE__
+  result          String   @default("SUCCESS") __SHORT_NATIVE__
+  requestId       String? __SHORT_NATIVE__
+  ipAddress       String? __SHORT_NATIVE__
+  userAgent       String? __MEDIUM_NATIVE__
+  metadataPayload Bytes?
+  createdAt       DateTime @default(now())
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  actor  AppUser? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+}
+
+
+
+model IntegrationApiKey {
+  id              String   @id @default(uuid()) __ID_NATIVE__
+  tenantId        String __ID_NATIVE__
+  createdByUserId String __ID_NATIVE__
+  name            String __SHORT_NATIVE__
+  keyPrefix       String __V32_NATIVE__
+  keyHash         String __V128_NATIVE__
+  permissionsPayload Bytes
+  status          String   @default("ACTIVE") __V32_NATIVE__
+  expiresAt       DateTime?
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy AppUser @relation("IntegrationApiKeyCreator", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requestLogs IntegrationRequestLog[]
+
+  @@unique([tenantId, name])
+  @@unique([keyHash])
+  @@index([tenantId, status])
+  @@index([expiresAt])
+}
+
+model WebhookEndpoint {
+  id              String   @id @default(uuid()) __ID_NATIVE__
+  tenantId        String __ID_NATIVE__
+  createdByUserId String __ID_NATIVE__
+  name            String __SHORT_NATIVE__
+  url             String __MEDIUM_NATIVE__
+  secretPayload   Bytes
+  eventsPayload   Bytes
+  status          String   @default("ACTIVE") __V32_NATIVE__
+  lastSuccessAt   DateTime?
+  lastFailureAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy AppUser @relation("WebhookEndpointCreator", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deliveries WebhookDelivery[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, status])
+}
+
+model WebhookDelivery {
+  id            String   @id @default(uuid()) __ID_NATIVE__
+  tenantId      String __ID_NATIVE__
+  webhookId     String __ID_NATIVE__
+  eventType     String __SHORT_NATIVE__
+  aggregateType String? __SHORT_NATIVE__
+  aggregateId   String? __SHORT_NATIVE__
+  payload       Bytes
+  status        String   @default("PENDING") __V32_NATIVE__
+  attemptCount  Int      @default(0)
+  maxAttempts   Int      @default(5)
+  availableAt   DateTime @default(now())
+  processingAt  DateTime?
+  deliveredAt   DateTime?
+  failedAt      DateTime?
+  responseStatus Int?
+  responseBody  String? __V2000_NATIVE__
+  lastError     String? __V2000_NATIVE__
+  lockedBy      String? __SHORT_NATIVE__
+  lockExpiresAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  webhook WebhookEndpoint @relation(fields: [webhookId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status, availableAt])
+  @@index([tenantId, createdAt])
+  @@index([webhookId, createdAt])
+}
+
+model IntegrationRequestLog {
+  id             String   @id @default(uuid()) __ID_NATIVE__
+  tenantId       String __ID_NATIVE__
+  apiKeyId       String? __ID_NATIVE__
+  endpoint       String __V500_NATIVE__
+  method         String __V16_NATIVE__
+  statusCode     Int
+  durationMs     Int
+  requestId      String? __SHORT_NATIVE__
+  idempotencyKey String? __SHORT_NATIVE__
+  remoteIp       String? __SHORT_NATIVE__
+  errorMessage   String? __V2000_NATIVE__
+  createdAt      DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  apiKey IntegrationApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, createdAt])
+  @@index([apiKeyId, createdAt])
+  @@index([statusCode, createdAt])
+}
+
+
+model ExternalConnector {
+  id                     String   @id @default(uuid()) __ID_NATIVE__
+  tenantId               String __ID_NATIVE__
+  createdByUserId        String __ID_NATIVE__
+  name                   String __SHORT_NATIVE__
+  purpose                String   @default("GENERAL") __V32_NATIVE__
+  method                 String   @default("GET") __V16_NATIVE__
+  urlTemplate            String __MEDIUM_NATIVE__
+  headersPayload         Bytes
+  bodyTemplate           String? __LONG_NATIVE__
+  authType               String   @default("NONE") __V32_NATIVE__
+  authName               String? __SHORT_NATIVE__
+  secretPayload          Bytes?
+  timeoutMs              Int      @default(10000)
+  itemsPath              String? __V500_NATIVE__
+  phonePath              String? __V500_NATIVE__
+  namePath               String? __V500_NATIVE__
+  contactMappingsPayload Bytes
+  status                 String   @default("ACTIVE") __V32_NATIVE__
+  lastSuccessAt          DateTime?
+  lastFailureAt          DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy AppUser @relation("ExternalConnectorCreator", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  executions ExternalConnectorExecution[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, purpose, status])
+  @@index([createdByUserId])
+}
+
+model ExternalConnectorExecution {
+  id              String   @id @default(uuid()) __ID_NATIVE__
+  tenantId        String __ID_NATIVE__
+  connectorId     String __ID_NATIVE__
+  contextType     String __V32_NATIVE__
+  contextId       String? __SHORT_NATIVE__
+  outcome         String __V32_NATIVE__
+  method          String __V16_NATIVE__
+  requestUrl      String __MEDIUM_NATIVE__
+  responseStatus  Int?
+  durationMs      Int
+  mappedCount     Int      @default(0)
+  responsePreview String? __V2000_NATIVE__
+  errorMessage    String? __V2000_NATIVE__
+  createdAt       DateTime @default(now())
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  connector ExternalConnector @relation(fields: [connectorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tenantId, createdAt])
+  @@index([connectorId, createdAt])
+  @@index([outcome, createdAt])
+}
+
+model RateLimitBucket {
+  key       String   @id __SHORT_NATIVE__
+  count     Int      @default(0)
+  resetAt   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([resetAt])
+}
+
+model TenantCapacityPolicy {
+  tenantId               String   @id __ID_NATIVE__
+  maxSessions            Int      @default(5)
+  maxConcurrentCampaigns Int      @default(3)
+  maxCampaignContacts    Int      @default(50000)
+  maxPendingMessages     Int      @default(100000)
+  monthlyMessageLimit    Int      @default(1000000)
+  backpressureEnabled    Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model TenantUsageMonthly {
+  tenantId           String   __ID_NATIVE__
+  period             String   __SHORT_NATIVE__
+  messagesReserved   Int      @default(0)
+  messagesSent       Int      @default(0)
+  messagesFailed     Int      @default(0)
+  mediaBytesUploaded BigInt   @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([tenantId, period])
+  @@index([period, messagesSent])
+}
+
+model TenantUsageEvent {
+  id          String   @id @default(uuid()) __ID_NATIVE__
+  tenantId    String   __ID_NATIVE__
+  period      String   __SHORT_NATIVE__
+  eventType   String   __SHORT_NATIVE__
+  referenceId String   __SHORT_NATIVE__
+  units       Int
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenantId, eventType, referenceId])
+  @@index([tenantId, period, eventType])
+}
+
+model OutboxEvent {
+  id              String    @id @default(uuid()) __ID_NATIVE__
+  tenantId        String?   __ID_NATIVE__
+  aggregateType   String    __SHORT_NATIVE__
+  aggregateId     String    __SHORT_NATIVE__
+  eventType       String    __SHORT_NATIVE__
+  payload         Bytes
+  status          String    @default("PENDING") __SHORT_NATIVE__
+  attemptCount    Int       @default(0)
+  maxAttempts     Int       @default(12)
+  availableAt     DateTime  @default(now())
+  lockedBy        String?   __SHORT_NATIVE__
+  lockExpiresAt   DateTime?
+  publishedAt     DateTime?
+  lastError       String?   __LONG_NATIVE__
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status, availableAt, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([lockExpiresAt])
+}
+
+model WorkerNode {
+  id              String   @id __SHORT_NATIVE__
+  shardId         Int
+  shardCount      Int
+  status          String   @default("ACTIVE") __SHORT_NATIVE__
+  lastHeartbeatAt DateTime @default(now())
+  leaseExpiresAt  DateTime
+  metadata        Bytes?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, leaseExpiresAt])
+  @@index([shardId, shardCount])
+}

@@ -1,0 +1,11 @@
+{
+  "Rules": [
+    {
+      "ID": "DeleteTemporaryWhatsAppMedia",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "temporary/"},
+      "Expiration": {"Days": 2},
+      "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}
+    }
+  ]
+}

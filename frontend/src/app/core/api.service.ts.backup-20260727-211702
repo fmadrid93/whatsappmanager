@@ -1,0 +1,217 @@
+import { Injectable } from "@angular/core";
+import { HttpClient, HttpHeaders } from "@angular/common/http";
+import { switchMap } from "rxjs";
+
+export interface SessionRecord {
+  id: string;
+  name: string;
+  status: string;
+  expectedPhoneE164?: string;
+  phoneE164?: string;
+  pairingMethod: "QR" | "CODE";
+  pairingCode?: string;
+  pairingCodeUpdatedAt?: string;
+  isBotActive: boolean;
+  qrUpdatedAt?: string;
+  lastConnectionCode?: number;
+  lastConnectionError?: string;
+}
+
+export interface CampaignRecord {
+  id: string;
+  name: string;
+  status: string;
+  totalMessages: number;
+  sentMessages: number;
+  failedMessages: number;
+  mediaAssetId?: string;
+  createdAt: string;
+  startedAt?: string;
+  pausedAt?: string;
+  completedAt?: string;
+  cancelledAt?: string;
+}
+
+export interface DeadLetterRecord {
+  id: string;
+  queueItemId: string;
+  campaignId: string;
+  sessionId?: string;
+  recipientE164?: string;
+  reasonCode: string;
+  reasonMessage: string;
+  attemptCount: number;
+  failedAt: string;
+  resolvedAt?: string;
+}
+
+export interface MediaRecord {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  mediaKind: string;
+  status: string;
+}
+
+export interface ConversationRecord {
+  id: string;
+  sessionId: string;
+  remoteJid: string;
+  isBotActive: boolean;
+  sessionBotActive: boolean;
+  assignedAgentId?: string;
+  lastMessageAt?: string;
+}
+
+
+export type BotFlowStep =
+  | { id: string; type: "MESSAGE"; text: string }
+  | { id: string; type: "QUESTION"; text: string; variable: string }
+  | { id: string; type: "CONDITION"; variable: string; operator: "EQUALS" | "CONTAINS" | "EXISTS"; value?: string; ifTrueText: string; ifFalseText?: string }
+  | { id: string; type: "END"; text?: string };
+
+export interface BotFlowRecord {
+  id: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  version: number;
+  definition: {
+    version: 2;
+    trigger: { type: "ANY" | "CONTAINS" | "EXACT"; value?: string };
+    steps: BotFlowStep[];
+  };
+  sessionIds: string[];
+  createdAt: string;
+}
+
+export interface AuditLogRecord {
+  id: string;
+  actorUserId?: string;
+  actorEmail?: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  result: string;
+  requestId?: string;
+  ipAddress?: string;
+  createdAt: string;
+}
+
+
+
+export interface IntegrationProbeResult {
+  decision: "PASS" | "FAIL";
+  realModes: boolean;
+  modes: { whatsappGateway: string; objectStorage: string };
+  checks: {
+    database: { status: string; durationMs: number; message?: string };
+    storage: { status: string; durationMs: number; message?: string; key?: string; sizeBytes?: number; roundTripVerified?: boolean };
+    workers: { status: string; durationMs: number; message?: string; activeCount: number };
+    sessions: { status: string; durationMs: number; message?: string; total: number; connected: number; requestedSessionId?: string; requestedSessionStatus?: string };
+  };
+  generatedAt: string;
+}
+
+export interface CapacitySnapshot {
+  period: string;
+  sessions: number;
+  activeCampaigns: number;
+  pendingMessages: number;
+  globalPendingMessages: number;
+  messagesReserved: number;
+  messagesSent: number;
+  limits: {
+    maxSessions: number;
+    maxConcurrentCampaigns: number;
+    maxCampaignContacts: number;
+    maxPendingMessages: number;
+    monthlyMessageLimit: number;
+  };
+}
+
+@Injectable({ providedIn: "root" })
+export class ApiService {
+  constructor(private readonly http: HttpClient) {}
+
+  capacity() { return this.http.get<CapacitySnapshot>("/api/capacity"); }
+  integrationProbe(sessionId?: string, requireConnectedSession = false) {
+    return this.http.post<IntegrationProbeResult>("/api/system/integration-probe", {
+      sessionId,
+      requireConnectedSession,
+      performStorageRoundTrip: true,
+    });
+  }
+  version() {
+    return this.http.get<{
+      name: string;
+      version: string;
+      environment: string;
+      modes: { whatsappGateway: string; objectStorage: string };
+    }>("/version");
+  }
+  sessions() { return this.http.get<SessionRecord[]>("/api/sessions"); }
+  createSession(body: { name: string; expectedPhone?: string; pairingMethod: "QR" | "CODE" }) {
+    return this.http.post<SessionRecord>("/api/sessions", body);
+  }
+  sessionQr(id: string) {
+    return this.http.get<{
+      status: string;
+      pairingMethod: "QR" | "CODE";
+      pairingCode: string | null;
+      pairingCodeUpdatedAt?: string;
+      qrDataUrl: string | null;
+      qrUpdatedAt?: string;
+      lastConnectionCode?: number;
+      lastConnectionError?: string;
+    }>(`/api/sessions/${id}/qr`);
+  }
+  requestPairingCode(id: string, phone?: string) {
+    return this.http.post<{ code: string }>(`/api/sessions/${id}/pairing-code`, { phone });
+  }
+  deleteSession(id: string) { return this.http.delete<void>(`/api/sessions/${id}`); }
+  setSessionBot(id: string, active: boolean) { return this.http.patch<void>(`/api/sessions/${id}/bot`, { active }); }
+  relinkSession(id: string) { return this.http.post<void>(`/api/sessions/${id}/relink`, {}); }
+
+  campaigns() { return this.http.get<CampaignRecord[]>("/api/campaigns"); }
+  createCampaign(body: unknown) { return this.http.post<CampaignRecord>("/api/campaigns", body); }
+  startCampaign(id: string) { return this.http.post<void>(`/api/campaigns/${id}/start`, {}); }
+  pauseCampaign(id: string) { return this.http.post<void>(`/api/campaigns/${id}/pause`, {}); }
+  resumeCampaign(id: string) { return this.http.post<void>(`/api/campaigns/${id}/resume`, {}); }
+  cancelCampaign(id: string) { return this.http.post<void>(`/api/campaigns/${id}/cancel`, {}); }
+  deadLetters(id: string) { return this.http.get<DeadLetterRecord[]>(`/api/campaigns/${id}/dead-letters?take=250`); }
+  requeueDeadLetter(campaignId: string, deadLetterId: string) {
+    return this.http.post<void>(`/api/campaigns/${campaignId}/dead-letters/${deadLetterId}/requeue`, {});
+  }
+
+  media() { return this.http.get<MediaRecord[]>("/api/media"); }
+  uploadMedia(file: File) {
+    return this.http.post<{
+      uploadUrl: string;
+      uploadToken: string;
+      requiredHeaders: Record<string, string>;
+    }>("/api/media/upload-intents", {
+      fileName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    }).pipe(
+      switchMap((intent) => this.http.put(intent.uploadUrl, file, {
+        headers: new HttpHeaders(intent.requiredHeaders),
+        responseType: "text",
+      }).pipe(
+        switchMap(() => this.http.post<MediaRecord>("/api/media/upload-intents/confirm", {
+          uploadToken: intent.uploadToken,
+        })),
+      )),
+    );
+  }
+
+  flows() { return this.http.get<BotFlowRecord[]>("/api/flows"); }
+  createFlow(body: unknown) { return this.http.post<BotFlowRecord>("/api/flows", body); }
+  setFlowActive(id: string, active: boolean) { return this.http.patch<void>(`/api/flows/${id}/active`, { active }); }
+
+  conversations() { return this.http.get<ConversationRecord[]>("/api/conversations"); }
+  takeOver(id: string) { return this.http.post<void>(`/api/conversations/${id}/take-over`, {}); }
+  release(id: string) { return this.http.post<void>(`/api/conversations/${id}/release`, {}); }
+  auditLogs() { return this.http.get<AuditLogRecord[]>("/api/audit-logs?take=250"); }
+}

@@ -1,0 +1,53 @@
+import { readdirSync, statSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
+import { spawnSync } from "node:child_process";
+
+const root = resolve(import.meta.dirname, "..");
+const testsRoot = join(root, "tests");
+const group = process.argv[2] ?? "all";
+const coverage = process.argv.includes("--coverage");
+
+function collect(directory) {
+  const result = [];
+  for (const name of readdirSync(directory).sort()) {
+    const fullPath = join(directory, name);
+    if (statSync(fullPath).isDirectory()) result.push(...collect(fullPath));
+    else if (name.endsWith(".test.ts")) result.push(fullPath);
+  }
+  return result;
+}
+
+const all = collect(testsRoot);
+const rootTests = all.filter((file) => relative(testsRoot, file).split(sep).length === 1);
+const groups = {
+  all,
+  unit: [...rootTests, ...all.filter((file) => file.includes(`${sep}unit${sep}`))],
+  contract: all.filter((file) => file.includes(`${sep}contract${sep}`)),
+  integration: all.filter((file) => file.includes(`${sep}integration${sep}`)),
+};
+
+const files = groups[group];
+if (!files) {
+  console.error(`Grupo desconocido: ${group}. Usa all, unit, contract o integration.`);
+  process.exit(2);
+}
+if (files.length === 0) {
+  console.error(`No se encontraron pruebas para el grupo ${group}.`);
+  process.exit(2);
+}
+
+const envFile = resolve(root, "..", ".env");
+const args = [`--env-file=${envFile}`, "--import=tsx", "--test", "--test-concurrency=1"];
+if (coverage) {
+  args.push(
+    "--experimental-test-coverage",
+    "--test-coverage-include=src/**/*.ts",
+    "--test-coverage-exclude=src/generated/**",
+  );
+}
+args.push(...files);
+
+console.log(`Ejecutando ${files.length} archivo(s) de pruebas [${group}]${coverage ? " con cobertura" : ""}.`);
+const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: process.env });
+if (result.error) throw result.error;
+process.exit(result.status ?? 1);

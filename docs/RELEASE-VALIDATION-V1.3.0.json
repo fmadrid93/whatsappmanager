@@ -1,0 +1,42 @@
+{
+  "version": "1.3.0-alpha",
+  "edition": "windows-native-sqlserver",
+  "validatedAt": "2026-07-27",
+  "checks": {
+    "powershellStructure": "PASS",
+    "sqlServerMigrationChain": "PASS",
+    "typescriptParse": "PASS_137_FILES",
+    "jsonYamlParse": "PASS",
+    "secretScan": "PASS",
+    "archiveIntegrity": "PASS_AFTER_PACKAGING"
+  },
+  "features": {
+    "baileys": "7.0.0-rc13",
+    "pairingMethods": [
+      "QR",
+      "CODE"
+    ],
+    "contactImports": [
+      "MANUAL",
+      "CSV",
+      "XLSX",
+      "API"
+    ],
+    "botFlow": [
+      "TRIGGER",
+      "MESSAGE",
+      "QUESTION",
+      "CONDITION",
+      "END"
+    ]
+  },
+  "notExecutedInBuildEnvironment": [
+    "npm install",
+    "TypeScript semantic compilation with project dependencies",
+    "Angular compilation",
+    "Prisma migration against a live SQL Server",
+    "Baileys connection to a real WhatsApp account",
+    "IIS and Windows Services"
+  ],
+  "productionApproved": false
+}
