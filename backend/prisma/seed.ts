@@ -25,6 +25,7 @@ async function main(): Promise<void> {
     },
     update: {
       displayName: "Administrador",
+      passwordHash,
       status: "ACTIVE",
       role: "TENANT_ADMIN",
     },
