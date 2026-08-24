@@ -1,4 +1,4 @@
-﻿import crypto from "node:crypto";
+import crypto from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import QRCode from "qrcode";
@@ -14,6 +14,7 @@ import { requirePermission } from "./middleware/permission.middleware.js";
 import { createRateLimiter } from "./middleware/rate-limit.middleware.js";
 import { HttpError } from "../shared/errors/http-error.js";
 import { supportedWebhookEvents } from "../application/services/integration-management.service.js";
+import { sleep } from "../shared/utils/delay.js";
 
 export const campaignContactSchema = z.object({
   name: z.string().max(150).optional(),
@@ -277,6 +278,560 @@ export function createRoutes(container: AppContainer): Router {
 
   router.get("/auth/me", auth, (request, response) => response.json(request.auth));
 
+  router.get(
+    "/system/public-ip",
+    asyncHandler(async (request, response) => {
+      try {
+        const res = await fetch("https://api.ipify.org?format=json", { signal: AbortSignal.timeout(4000) });
+        if (res.ok) {
+          const data = (await res.json()) as { ip?: string };
+          return response.json({ ip: data.ip || request.ip || "127.0.0.1", source: "external" });
+        }
+      } catch {
+        // Fallback al IP remoto de la petición
+      }
+      response.json({ ip: request.ip || "127.0.0.1", source: "local" });
+    }),
+  );
+
+  // Helper para resolver sesiones por UUID o por Alias/Nombre (ej. asuncion_admin_fmadrid_linea1, u3073_principal)
+  const isUuid = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+  const resolveSession = async (identifier: string) => {
+    try {
+      if (isUuid(identifier)) {
+        return await container.prisma.whatsAppSession.findUnique({ where: { id: identifier } });
+      }
+      // 1. Coincidencia exacta por nombre
+      let found = await container.prisma.whatsAppSession.findFirst({
+        where: { name: identifier },
+        orderBy: { createdAt: "desc" },
+      });
+      if (found) return found;
+
+      // 2. Extraer identificador base si viene en formato u3073 o u3073_principal
+      const clean = identifier.replace(/^u/, "").replace(/_principal$/, "").replace(/_linea\d+$/, "");
+      if (clean) {
+        found = await container.prisma.whatsAppSession.findFirst({
+          where: {
+            OR: [
+              { name: { contains: `_${clean}_` } },
+              { name: { contains: `_${clean}` } },
+              { name: { contains: clean } },
+              { name: { startsWith: `u${clean}_` } },
+            ],
+          },
+          orderBy: { createdAt: "desc" },
+        });
+        if (found) return found;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Endpoints para Flutter Web, Nodos Municipales y Panel Admin SaaS Angular
+  router.get(
+    "/sessions",
+    asyncHandler(async (request, response) => {
+      try {
+        const userIdParam = request.query.userId ? String(request.query.userId).trim() : null;
+        const userNameParam = (request.query.username || request.query.user) ? String(request.query.username || request.query.user).trim() : null;
+        const sessionNameParam = request.query.session ? String(request.query.session).trim() : null;
+        const roleParam = request.query.role ? String(request.query.role).trim().toLowerCase() : null;
+        const hasQuery = Boolean(userIdParam || userNameParam || sessionNameParam);
+
+        let whereClause: any = {
+          status: { notIn: ["DELETED", "LOGGED_OUT"] },
+        };
+
+        const isElevatedRole = Boolean(roleParam && (roleParam.includes("admin") || roleParam.includes("gerent")));
+
+        if (!isElevatedRole) {
+          if (sessionNameParam) {
+            whereClause.OR = [
+              { name: sessionNameParam },
+              { name: { contains: sessionNameParam } },
+            ];
+          } else if (userIdParam || userNameParam) {
+            const orConditions: any[] = [];
+            if (userIdParam) {
+              const prefix = userIdParam.startsWith("u") ? `${userIdParam}_` : `u${userIdParam}_`;
+              orConditions.push(
+                { name: { startsWith: prefix } },
+                { name: { contains: `_${prefix}` } },
+                { name: { contains: `_${userIdParam}_` } },
+                { name: { contains: `_u${userIdParam}_` } },
+                { name: { contains: userIdParam } },
+              );
+            }
+            if (userNameParam) {
+              orConditions.push(
+                { name: { contains: userNameParam } },
+                { name: { contains: `_${userNameParam}_` } },
+              );
+            }
+            whereClause.OR = orConditions;
+          }
+
+          // Aislamiento estricto de roles: un movilizador o usuario regular nunca puede ver sesiones de admin
+          if (roleParam && (roleParam.includes("movil") || roleParam === "usr" || roleParam === "usuario")) {
+            whereClause.NOT = [
+              { name: { contains: "_admin_" } },
+              { name: { startsWith: "admin_" } },
+            ];
+          }
+        }
+
+        const all = await container.prisma.whatsAppSession.findMany({
+          where: whereClause,
+          orderBy: { createdAt: "desc" },
+        });
+
+        // Si la petición viene con parámetros de consulta (ej. desde Flutter), retornamos el formato compatible
+        if (hasQuery) {
+          const names = all.map((s) => s.name);
+          return response.json({ sessions: names, items: all });
+        }
+
+        // Si la petición viene del Panel Web Admin Angular (localhost:4200/sessions), retornamos el Array directo
+        response.json(all);
+      } catch (err: any) {
+        response.status(500).json({ error: err?.message || "Error al listar sesiones" });
+      }
+    }),
+  );
+
+  router.post(
+    "/sessions",
+    asyncHandler(async (request, response) => {
+      const body = request.body || {};
+      let tenant = await container.prisma.tenant.findFirst();
+      if (!tenant) {
+        tenant = await container.prisma.tenant.create({
+          data: { name: "Tenant Campaña", status: "ACTIVE" },
+        });
+      }
+      let user = await container.prisma.appUser.findFirst();
+      if (!user) {
+        user = await container.prisma.appUser.create({
+          data: {
+            tenantId: tenant.id,
+            email: "admin@campana.local",
+            displayName: "Admin Campaña",
+            passwordHash: "system",
+            role: "TENANT_ADMIN",
+          },
+        });
+      }
+
+      const name = String(body.name || `sesion_${Date.now()}`);
+      const pairingMethod = body.pairingMethod === "CODE" ? "CODE" : "QR";
+      const expectedPhoneE164 = body.expectedPhoneE164 ? String(body.expectedPhoneE164) : null;
+
+      const created = await container.prisma.whatsAppSession.create({
+        data: {
+          tenantId: tenant.id,
+          ownerUserId: user.id,
+          name,
+          pairingMethod,
+          expectedPhoneE164,
+          status: "STARTING",
+          shardKey: 1,
+          isBotActive: Boolean(body.isBotActive ?? false),
+        },
+      });
+
+      response.status(201).json(created);
+    }),
+  );
+
+  const handlePairingCode = asyncHandler(async (request, response) => {
+    const identifier = String(request.params.id);
+    let session = await resolveSession(identifier);
+    const body = request.body || {};
+    let phone = String(body.phone || body.phoneE164 || session?.expectedPhoneE164 || "").trim();
+
+    if (!phone || phone.replace(/\D/g, "").length < 8) {
+      return response.status(400).json({ error: "Debes proporcionar un número de teléfono válido con código de país (ej. +595972686891)" });
+    }
+    if (!phone.startsWith("+")) {
+      phone = `+${phone}`;
+    }
+
+    if (!session) {
+      let tenant = await container.prisma.tenant.findFirst();
+      if (!tenant) {
+        tenant = await container.prisma.tenant.create({ data: { name: "Tenant Campaña", status: "ACTIVE" } });
+      }
+      let user = await container.prisma.appUser.findFirst();
+      if (!user) {
+        user = await container.prisma.appUser.create({
+          data: {
+            tenantId: tenant.id,
+            email: "admin@campana.local",
+            displayName: "Admin Campaña",
+            passwordHash: "system",
+            role: "TENANT_ADMIN",
+          },
+        });
+      }
+      session = await container.prisma.whatsAppSession.create({
+        data: {
+          tenantId: tenant.id,
+          ownerUserId: user.id,
+          name: identifier,
+          pairingMethod: "CODE",
+          expectedPhoneE164: phone,
+          status: "STARTING",
+          shardKey: 1,
+          isBotActive: false,
+        },
+      });
+    } else {
+      await container.prisma.whatsAppSession.update({
+        where: { id: session.id },
+        data: {
+          pairingMethod: "CODE",
+          status: "STARTING",
+          lastConnectionError: null,
+          expectedPhoneE164: phone,
+          pairingCode: null,
+          qrCode: null,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        },
+      });
+    }
+
+    // Esperar a que el Worker genere el código de emparejamiento
+    for (let i = 0; i < 20; i++) {
+      await sleep(500);
+      const fresh = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+      if (fresh?.pairingCode) {
+        return response.json({ ok: true, code: fresh.pairingCode, sessionId: session.id, name: session.name });
+      }
+    }
+
+    const freshFinal = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+    if (freshFinal?.pairingCode) {
+      return response.json({ ok: true, code: freshFinal.pairingCode, sessionId: session.id, name: session.name });
+    }
+    response.status(500).json({ error: "El worker está procesando la solicitud, intenta nuevamente en unos segundos." });
+  });
+
+  router.post("/session/:id/pairing-code", handlePairingCode);
+  router.post("/sessions/:id/pairing-code", handlePairingCode);
+
+  router.get(
+    "/sessions/:id/qr",
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      const session = await resolveSession(identifier);
+      if (!session) {
+        return response.status(404).json({ error: "Sesión no encontrada" });
+      }
+
+      if (session.status === "DELETED" || session.status === "LOGGED_OUT" || session.status === "QUARANTINED") {
+        await container.prisma.whatsAppSession.update({
+          where: { id: session.id },
+          data: { status: "STARTING", pairingMethod: "QR", qrCode: null, pairingCode: null, lastConnectionError: null, leaseOwner: null, leaseExpiresAt: null },
+        });
+      }
+
+      const freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+      const isConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
+      const qrDataUrl = freshSession?.qrCode ? await QRCode.toDataURL(freshSession.qrCode, { width: 360, margin: 2 }) : null;
+
+      response.json({
+        available: Boolean(freshSession?.qrCode) && !isConnected,
+        connected: isConnected,
+        qr: qrDataUrl ?? "",
+        qrCode: isConnected ? null : (freshSession?.qrCode ?? null),
+        status: freshSession?.status ?? "STARTING",
+      });
+    }),
+  );
+
+  router.delete(
+    "/sessions/:id",
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      const session = await resolveSession(identifier);
+      if (session) {
+        try {
+          await container.whatsapp.sessionGateway.stop(session.id);
+        } catch {}
+        try {
+          await container.prisma.whatsAppSession.delete({ where: { id: session.id } });
+        } catch {
+          await container.prisma.whatsAppSession.update({
+            where: { id: session.id },
+            data: { status: "DELETED", qrCode: null, phoneE164: null, whatsappJid: null },
+          });
+        }
+      }
+      response.status(204).send();
+    }),
+  );
+
+  router.patch(
+    "/sessions/:id/bot",
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      const session = await resolveSession(identifier);
+      if (session) {
+        const active = Boolean(request.body?.active);
+        await container.prisma.whatsAppSession.update({
+          where: { id: session.id },
+          data: { isBotActive: active },
+        });
+      }
+      response.json({ ok: true });
+    }),
+  );
+
+  router.post(
+    "/sessions/:id/relink",
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      const session = await resolveSession(identifier);
+      if (session) {
+        await container.prisma.whatsAppSession.update({
+          where: { id: session.id },
+          data: { status: "STARTING", qrCode: null, pairingCode: null, phoneE164: null, whatsappJid: null, lastConnectionError: null, leaseOwner: null, leaseExpiresAt: null },
+        });
+      }
+      response.json({ ok: true });
+    }),
+  );
+
+  router.post(
+    "/sessions/purge-old",
+    asyncHandler(async (_request, response) => {
+      try {
+        const deleted = await container.prisma.whatsAppSession.deleteMany({
+          where: {
+            OR: [
+              { status: { in: ["DELETED", "LOGGED_OUT", "QUARANTINED"] } },
+              { name: { not: { startsWith: "u" } } },
+            ],
+          },
+        });
+        response.json({ ok: true, deletedCount: deleted.count });
+      } catch (err: any) {
+        response.status(500).json({ error: err?.message });
+      }
+    }),
+  );
+
+  router.get(
+    "/session/:id/status",
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      const session = await resolveSession(identifier);
+      const isConnected =
+        (session?.status === "CONNECTED" || session?.status === "WORKING") &&
+        Boolean(session?.whatsappJid);
+
+      response.json({
+        connected: isConnected,
+        state: isConnected ? "connected" : (session?.status?.toLowerCase() ?? "stopped"),
+        me: isConnected ? (session?.phoneE164 ?? session?.whatsappJid?.split("@")[0] ?? null) : null,
+      });
+    }),
+  );
+
+  router.post(
+    "/session/:id/start",
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      let session = await resolveSession(identifier);
+      if (!session) {
+        let tenant = await container.prisma.tenant.findFirst();
+        if (!tenant) {
+          tenant = await container.prisma.tenant.create({
+            data: { name: "Tenant Campaña", status: "ACTIVE" },
+          });
+        }
+        let user = await container.prisma.appUser.findFirst();
+        if (!user) {
+          user = await container.prisma.appUser.create({
+            data: {
+              tenantId: tenant.id,
+              email: "admin@campana.local",
+              displayName: "Admin Campaña",
+              passwordHash: "system",
+              role: "TENANT_ADMIN",
+            },
+          });
+        }
+        session = await container.prisma.whatsAppSession.create({
+          data: {
+            tenantId: tenant.id,
+            ownerUserId: user.id,
+            name: identifier,
+            pairingMethod: "QR",
+            status: "STARTING",
+            shardKey: 1,
+            isBotActive: false,
+          },
+        });
+      } else if (session.status !== "CONNECTED" && session.status !== "WORKING") {
+        await container.prisma.whatsAppSession.update({
+          where: { id: session.id },
+          data: { status: "STARTING", lastConnectionError: null, leaseOwner: null, leaseExpiresAt: null },
+        });
+      }
+      response.json({ ok: true, sessionId: session.id, name: session.name });
+    }),
+  );
+
+  router.get(
+    "/session/:id/qr",
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      let session = await resolveSession(identifier);
+
+      if (!session) {
+        let tenant = await container.prisma.tenant.findFirst();
+        if (!tenant) {
+          tenant = await container.prisma.tenant.create({
+            data: { name: "Tenant Campaña", status: "ACTIVE" },
+          });
+        }
+        let user = await container.prisma.appUser.findFirst();
+        if (!user) {
+          user = await container.prisma.appUser.create({
+            data: {
+              tenantId: tenant.id,
+              email: "admin@campana.local",
+              displayName: "Admin Campaña",
+              passwordHash: "system",
+              role: "TENANT_ADMIN",
+            },
+          });
+        }
+        session = await container.prisma.whatsAppSession.create({
+          data: {
+            tenantId: tenant.id,
+            ownerUserId: user.id,
+            name: identifier,
+            pairingMethod: "QR",
+            status: "STARTING",
+            shardKey: 1,
+            isBotActive: false,
+          },
+        });
+      } else if (session.status === "DELETED" || session.status === "LOGGED_OUT" || session.status === "QUARANTINED") {
+        await container.prisma.whatsAppSession.update({
+          where: { id: session.id },
+          data: { status: "STARTING", pairingMethod: "QR", qrCode: null, pairingCode: null, lastConnectionError: null, leaseOwner: null, leaseExpiresAt: null },
+        });
+      }
+
+      // Re-consultar el registro para obtener el qrCode actualizado
+      const freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+      const isConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
+      const qrDataUrl = freshSession?.qrCode ? await QRCode.toDataURL(freshSession.qrCode, { width: 360, margin: 2 }) : null;
+      const qrPngBase64 = qrDataUrl ? qrDataUrl.replace(/^data:image\/png;base64,/, "") : null;
+
+      response.json({
+        available: Boolean(freshSession?.qrCode) && !isConnected,
+        connected: isConnected,
+        qrPngBase64: isConnected ? null : qrPngBase64,
+        qrCode: isConnected ? null : (freshSession?.qrCode ?? null),
+        status: freshSession?.status ?? "STARTING",
+      });
+    }),
+  );
+
+  router.post(
+    "/session/:id/reset",
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      const session = await resolveSession(identifier);
+      if (session) {
+        try {
+          await container.whatsapp.sessionGateway.stop(session.id);
+        } catch {}
+        try {
+          await container.prisma.whatsAppSession.delete({ where: { id: session.id } });
+        } catch {
+          await container.prisma.whatsAppSession.update({
+            where: { id: session.id },
+            data: { status: "DELETED", qrCode: null, phoneE164: null },
+          });
+        }
+      }
+      response.json({ ok: true });
+    }),
+  );
+
+  router.post(
+    "/session/:id/send",
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      const session = await resolveSession(identifier);
+      const sessionId = session ? session.id : identifier;
+      const body = request.body || {};
+      const to = (body.to || "").toString().replace(/\D/g, "");
+      const message = (body.message || "").toString();
+
+      if (!to || !message) {
+        return response.status(400).json({ error: "Faltan los campos 'to' o 'message'" });
+      }
+
+      try {
+        if (container.whatsapp.sockets.has(sessionId)) {
+          const socket = container.whatsapp.sockets.get(sessionId);
+          const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
+          await socket.sendMessage(jid, { text: message });
+          return response.json({ ok: true, sent: true });
+        }
+
+        const fresh = session || (await container.prisma.whatsAppSession.findUnique({ where: { id: sessionId } }));
+        if (!fresh) {
+          return response.status(404).json({ error: "Sesión no encontrada" });
+        }
+
+        let campaign = await container.prisma.campaign.findFirst({ where: { tenantId: fresh.tenantId } });
+        if (!campaign) {
+          campaign = await container.prisma.campaign.create({
+            data: {
+              tenantId: fresh.tenantId,
+              name: "Mensajes Directos",
+              status: "ACTIVE",
+              messagePayload: Buffer.from("{}"),
+            },
+          });
+        }
+
+        await container.prisma.messageQueue.create({
+          data: {
+            tenantId: fresh.tenantId,
+            campaignId: campaign.id,
+            assignedSessionId: fresh.id,
+            contactName: to,
+            recipientRaw: to,
+            recipientE164: to.startsWith("+") ? to : `+${to}`,
+            recipientJid: to.includes("@") ? to : `${to}@s.whatsapp.net`,
+            messageType: "conversation",
+            payload: Buffer.from(JSON.stringify({ text: message })),
+            status: "PENDING",
+            priority: 1,
+            attemptCount: 0,
+            availableAt: new Date(),
+            idempotencyKey: crypto.randomUUID(),
+          },
+        });
+        response.json({ ok: true, sent: true, queued: true });
+      } catch (err: any) {
+        response.status(500).json({ error: err?.message || "Error al enviar mensaje" });
+      }
+    }),
+  );
 
   router.post(
     "/integrations/campaigns",
@@ -936,6 +1491,23 @@ export function createRoutes(container: AppContainer): Router {
       await audit(request, "CAMPAIGN_CANCELLED", "Campaign", id);
       await container.services.integrationManagementService.emit({ tenantId: request.auth!.tenantId, eventType: "CAMPAIGN_CANCELLED", aggregateType: "Campaign", aggregateId: id, payload: { campaignId: id } });
       response.status(204).send();
+    }),
+  );
+
+  router.post(
+    "/campaigns/purge-all",
+    asyncHandler(async (_request, response) => {
+      try {
+        await container.prisma.whatsAppMessage.deleteMany({ where: { queueItemId: { not: null } } });
+        await container.prisma.messageAttempt.deleteMany();
+        await container.prisma.messageQueue.deleteMany();
+        await container.prisma.campaignSession.deleteMany();
+        await container.prisma.mediaPreparationJob.deleteMany();
+        await container.prisma.campaign.deleteMany();
+        response.json({ ok: true, message: "Todas las campañas y colas fueron purgadas exitosamente." });
+      } catch (err: any) {
+        response.status(500).json({ error: err?.message || "Error al purgar campañas" });
+      }
     }),
   );
 

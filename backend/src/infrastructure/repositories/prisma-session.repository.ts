@@ -85,7 +85,7 @@ export class PrismaSessionRepository implements ISessionRepository {
     const rows = await this.prisma.whatsAppSession.findMany({
       where: {
         deletedAt: null,
-        status: { in: ["NEW", "DISCONNECTED", "QR_REQUIRED", "PAIRING_CODE", "CONNECTING", "CONNECTED"] },
+        status: { in: ["NEW", "STARTING", "DISCONNECTED", "QR_REQUIRED", "PAIRING_CODE", "CONNECTING", "CONNECTED"] },
         OR: [
           { leaseOwner: null },
           { leaseExpiresAt: null },
@@ -123,8 +123,15 @@ export class PrismaSessionRepository implements ISessionRepository {
 
   async renewLease(sessionId: string, workerId: string, expiresAt: Date): Promise<boolean> {
     const result = await this.prisma.whatsAppSession.updateMany({
-      where: { id: sessionId, leaseOwner: workerId, deletedAt: null },
-      data: { leaseExpiresAt: expiresAt, lastHeartbeatAt: new Date() },
+      where: {
+        id: sessionId,
+        deletedAt: null,
+        OR: [
+          { leaseOwner: workerId },
+          { leaseOwner: null },
+        ],
+      },
+      data: { leaseOwner: workerId, leaseExpiresAt: expiresAt, lastHeartbeatAt: new Date() },
     });
     return result.count === 1;
   }

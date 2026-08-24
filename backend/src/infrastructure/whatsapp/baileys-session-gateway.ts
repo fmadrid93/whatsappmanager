@@ -1,4 +1,4 @@
-﻿import { Boom } from "@hapi/boom";
+import { Boom } from "@hapi/boom";
 import makeWASocket, {
   Browsers,
   DisconnectReason,
@@ -20,6 +20,8 @@ import { logger } from "../../shared/logger/logger.js";
 import type { ISessionGateway } from "../../application/ports/whatsapp/session-gateway.js";
 import { sleep } from "../../shared/utils/delay.js";
 import { classifySendFailure } from "../../domain/queue/send-error-classifier.js";
+import { HttpsProxyAgent } from "https-proxy-agent";
+import { env } from "../../shared/config/env.js";
 
 export const BAILEYS_PACKAGE_TARGET = "7.0.0-rc14";
 
@@ -41,7 +43,18 @@ function errorText(error: unknown): string {
 }
 
 export function isRestartRequiredStatus(statusCode: number | undefined): boolean {
-  return statusCode === DisconnectReason.restartRequired;
+  return (
+    statusCode === DisconnectReason.restartRequired ||
+    statusCode === DisconnectReason.connectionClosed ||
+    statusCode === DisconnectReason.connectionLost ||
+    statusCode === DisconnectReason.timedOut ||
+    statusCode === DisconnectReason.connectionReplaced ||
+    statusCode === 440 ||
+    statusCode === 408 ||
+    statusCode === 428 ||
+    statusCode === 515 ||
+    statusCode === 503
+  );
 }
 
 
@@ -55,6 +68,7 @@ export function shouldPreserveQuarantine(
 export class BaileysSessionGateway implements ISessionGateway {
   private readonly stoppingSessions = new Set<string>();
   private readonly restartingSessions = new Set<string>();
+  private readonly startingSessions = new Set<string>();
 
   constructor(
     private readonly sessions: ISessionRepository,
@@ -69,72 +83,105 @@ export class BaileysSessionGateway implements ISessionGateway {
 
   async start(sessionId: string): Promise<void> {
     this.stoppingSessions.delete(sessionId);
-    if (this.registry.has(sessionId)) return;
-    const session = await this.sessions.findById(sessionId);
-    if (!session) throw new Error("Sesión no encontrada.");
-    if (session.status === "QUARANTINED") {
-      logger.warn(
-        { sessionId, lastConnectionCode: session.lastConnectionCode, lastConnectionError: session.lastConnectionError },
-        "No se iniciará un socket para una sesión en cuarentena.",
+    if (this.registry.has(sessionId) || this.startingSessions.has(sessionId)) return;
+    this.startingSessions.add(sessionId);
+
+    try {
+      const session = await this.sessions.findById(sessionId);
+      if (!session) throw new Error("Sesión no encontrada.");
+      if (session.status === "QUARANTINED") {
+        logger.warn(
+          { sessionId, lastConnectionCode: session.lastConnectionCode, lastConnectionError: session.lastConnectionError },
+          "No se iniciará un socket para una sesión en cuarentena.",
+        );
+        await this.sessions.releaseLease(sessionId, this.workerId);
+        return;
+      }
+
+      await this.sessions.updateStatus(sessionId, "CONNECTING", {
+        lastConnectionAt: new Date(),
+        lastConnectionError: null,
+      });
+
+      const authFactory = new BaileysAuthStateFactory(this.authRepository);
+      const { state, saveCreds } = await authFactory.create(sessionId);
+      const { version, isLatest } = await fetchLatestBaileysVersion();
+
+      if (this.stoppingSessions.has(sessionId)) {
+        return;
+      }
+
+      logger.info(
+        {
+          sessionId,
+          version,
+          isLatest,
+          baileysPackageTarget: BAILEYS_PACKAGE_TARGET,
+          pairingMethod: session.pairingMethod,
+          privacyTokenHandling: "BAILEYS_V7_NATIVE",
+        },
+        "Iniciando socket Baileys con manejo nativo de tokens de privacidad.",
       );
-      await this.sessions.releaseLease(sessionId, this.workerId);
-      return;
-    }
 
-    await this.sessions.updateStatus(sessionId, "CONNECTING", {
-      lastConnectionAt: new Date(),
-      lastConnectionError: null,
-    });
+      let agent: HttpsProxyAgent<string> | undefined;
+      if (env.PROXY_URL && env.PROXY_URL.trim().length > 0) {
+        agent = new HttpsProxyAgent(env.PROXY_URL.trim());
+      }
 
-    const authFactory = new BaileysAuthStateFactory(this.authRepository);
-    const { state, saveCreds } = await authFactory.create(sessionId);
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-
-    logger.info(
-      {
-        sessionId,
+      const socket = makeWASocket({
+        auth: state,
         version,
-        isLatest,
-        baileysPackageTarget: BAILEYS_PACKAGE_TARGET,
-        pairingMethod: session.pairingMethod,
-        privacyTokenHandling: "BAILEYS_V7_NATIVE",
-      },
-      "Iniciando socket Baileys con manejo nativo de tokens de privacidad.",
-    );
+        agent,
+        browser: Browsers.macOS("Chrome"),
+        printQRInTerminal: false,
+        markOnlineOnConnect: false,
+        syncFullHistory: false,
+        shouldSyncHistoryMessage: () => false,
+        generateHighQualityLinkPreview: false,
+        logger: pino({ level: "silent" }),
+        getMessage: async (key) => {
+          if (!key.id) return undefined;
+          const payload = await this.messages.getMessagePayload(sessionId, key.id);
+          return payload ? proto.Message.decode(payload) : undefined;
+        },
+      });
 
-    // No inyectamos TC/CS tokens ni alteramos nodos del protocolo manualmente.
-    // Baileys v7 mantiene ese ciclo internamente. Nuestro auth store acepta
-    // categorías de claves genéricas para no descartar material nuevo.
-    const socket = makeWASocket({
-      auth: state,
-      version,
-      browser: Browsers.macOS("Chrome"),
-      printQRInTerminal: false,
-      markOnlineOnConnect: false,
-      syncFullHistory: false,
-      shouldSyncHistoryMessage: () => false,
-      generateHighQualityLinkPreview: false,
-      logger: pino({ level: "silent" }),
-      getMessage: async (key) => {
-        if (!key.id) return undefined;
-        const payload = await this.messages.getMessagePayload(sessionId, key.id);
-        return payload ? proto.Message.decode(payload) : undefined;
-      },
-    });
+      this.registry.set(sessionId, socket);
+      socket.ev.on("creds.update", saveCreds);
+      this.messagePersistence.register(socket, sessionId);
+      this.inbound.register(socket, sessionId);
+      this.registerConnectionUpdates(sessionId, socket);
 
-    this.registry.set(sessionId, socket);
-    socket.ev.on("creds.update", saveCreds);
-    this.messagePersistence.register(socket, sessionId);
-    this.inbound.register(socket, sessionId);
-    this.registerConnectionUpdates(sessionId, socket);
-
-    if (!state.creds.registered && session.pairingMethod === "CODE") {
-      await this.generatePairingCode(sessionId, socket, session.expectedPhoneE164);
+      if (!state.creds.registered && session.pairingMethod === "CODE" && session.expectedPhoneE164) {
+        try {
+          await this.generatePairingCode(sessionId, socket, session.expectedPhoneE164);
+        } catch {}
+      }
+    } finally {
+      this.startingSessions.delete(sessionId);
     }
   }
 
   async requestPairingCode(sessionId: string, phoneE164?: string): Promise<string> {
-    const socket = this.registry.get(sessionId);
+    const session = await this.sessions.findById(sessionId);
+    if (session && session.status === "QUARANTINED") {
+      await this.sessions.updateStatus(sessionId, "STARTING", {
+        lastConnectionError: null,
+      });
+    }
+
+    let socket = this.registry.has(sessionId) ? this.registry.get(sessionId) : null;
+    if (!socket) {
+      await this.start(sessionId);
+      for (let i = 0; i < 15; i++) {
+        await sleep(500);
+        if (this.registry.has(sessionId)) {
+          socket = this.registry.get(sessionId);
+          break;
+        }
+      }
+    }
+    if (!socket) throw new Error("No se pudo iniciar el canal de WhatsApp para generar el código.");
     return this.generatePairingCode(sessionId, socket, phoneE164);
   }
 
@@ -257,28 +304,19 @@ export class BaileysSessionGateway implements ISessionGateway {
               },
               "Socket cerrado por cuarentena; se conserva el estado QUARANTINED.",
             );
-          } else if (restartRequired && !intentionallyStopped) {
-            await this.sessions.updateStatus(sessionId, "CONNECTING", {
-              disconnectReason: "restartRequired",
-              disconnectedAt: new Date(),
-              lastConnectionCode: statusCode ?? 515,
-              lastConnectionError: connectionError,
-              lastConnectionAt: new Date(),
-            });
-            logger.info({ sessionId, statusCode }, "Baileys solicito reiniciar el socket; no se ejecutara failover.");
-            this.scheduleRestartRequired(sessionId);
           } else if (loggedOut) {
             await this.authRepository.clearSession(sessionId);
             await this.sessions.updateStatus(sessionId, "LOGGED_OUT", {
               disconnectReason: "loggedOut",
               disconnectedAt: new Date(),
-              lastConnectionCode: statusCode ?? null,
-              lastConnectionError: errorText(error),
+              lastConnectionCode: statusCode ?? 401,
+              lastConnectionError: connectionError,
               lastConnectionAt: new Date(),
               clearQr: true,
               clearPairingCode: true,
             });
             await this.failover.handleLoggedOut(sessionId);
+            await this.sessions.releaseLease(sessionId, this.workerId);
           } else if (pairingRejected) {
             await this.sessions.updateStatus(sessionId, "PAIRING_FAILED", {
               disconnectReason: "405",
@@ -289,33 +327,15 @@ export class BaileysSessionGateway implements ISessionGateway {
               clearQr: true,
               clearPairingCode: true,
             });
-          } else if (fatalDisconnect) {
-            await this.failover.handleFatalFailure(
-              sessionId,
-              connectionFailure.code,
-              connectionFailure.message,
-              statusCode,
-            );
+            await this.sessions.releaseLease(sessionId, this.workerId);
+          } else if (!intentionallyStopped) {
+            // Desconexión transitoria: reintentar reconexión conservando la sesión activa
+            logger.info({ sessionId, statusCode }, "Desconexión transitoria de socket; reintentando reconexión automática.");
+            this.scheduleRestartRequired(sessionId);
           } else {
-            await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
-              disconnectReason: statusCode ? String(statusCode) : "connectionClosed",
-              disconnectedAt: new Date(),
-              lastConnectionCode: statusCode ?? null,
-              lastConnectionError: connectionError,
-              lastConnectionAt: new Date(),
-            });
-            if (!intentionallyStopped) {
-              await this.failover.handleTechnicalFailure(
-                sessionId,
-                statusCode ? `SESSION_DISCONNECTED_${statusCode}` : "SESSION_DISCONNECTED",
-                connectionError,
-              );
-            }
-          }
-
-          if (!(restartRequired && !intentionallyStopped)) {
             await this.sessions.releaseLease(sessionId, this.workerId);
           }
+
           logger.warn(
             {
               sessionId,
@@ -328,9 +348,9 @@ export class BaileysSessionGateway implements ISessionGateway {
             },
             preserveQuarantine
               ? "Sesión en cuarentena; socket cerrado sin reactivar."
-              : restartRequired
-                ? "Socket requiere reinicio."
-                : "Sesión desconectada.",
+              : loggedOut
+                ? "Sesión cerrada (logged out)."
+                : "Desconexión de socket procesada.",
           );
         }
       } catch (error) {

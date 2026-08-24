@@ -95,7 +95,6 @@ export function classifySendFailure(error: unknown): SendFailureClassification {
       "cuenta suspendida",
       "sesion cerrada",
       "session closed",
-      "connection replaced",
       "multidevice mismatch",
     ])
   ) {

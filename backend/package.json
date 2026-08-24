@@ -8,8 +8,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev:api": "tsx watch src/api/main.ts",
-    "dev:worker": "tsx watch src/worker/main.ts",
+    "dev:api": "tsx watch --env-file=../.env src/api/main.ts",
+    "dev:worker": "tsx watch --env-file=../.env src/worker/main.ts",
     "start:api": "node dist/api/main.js",
     "start:worker": "node dist/worker/main.js",
     "prisma:select": "node scripts/select-prisma-provider.mjs",
@@ -46,6 +46,7 @@
     "express": "5.1.0",
     "google-libphonenumber": "3.2.40",
     "helmet": "8.1.0",
+    "https-proxy-agent": "^9.1.0",
     "jsonwebtoken": "9.0.2",
     "multer": "2.0.2",
     "pino": "9.9.0",

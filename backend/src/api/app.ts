@@ -1,4 +1,4 @@
-﻿import cors from "cors";
+import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import type { AppContainer } from "../container.js";
@@ -25,7 +25,15 @@ export function createApp(
   app.use(helmet({ crossOriginResourcePolicy: false }));
   app.use(cors({
     origin(origin, callback) {
-      if (!origin || container.env.CORS_ORIGINS.includes(origin)) return callback(null, true);
+      if (
+        !origin ||
+        origin.startsWith("http://localhost") ||
+        origin.startsWith("http://127.0.0.1") ||
+        container.env.CORS_ORIGINS.includes(origin) ||
+        container.env.CORS_ORIGINS.includes("*")
+      ) {
+        return callback(null, true);
+      }
       callback(new Error("Origen no permitido por CORS."));
     },
     credentials: true,
@@ -91,7 +99,9 @@ export function createApp(
   });
 
   app.get("/health", (_request, response) => response.redirect(307, "/health/ready"));
-  app.use("/api", createRoutes(container));
+  const routes = createRoutes(container);
+  app.use("/api", routes);
+  app.use("/", routes);
   app.use(errorMiddleware);
   return app;
 }

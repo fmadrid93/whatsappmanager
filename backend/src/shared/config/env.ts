@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 
 const optionalUrl = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
@@ -33,7 +33,7 @@ const schema = z.object({
   ENCRYPTION_KEY_BASE64: z.string().min(1),
   INTEGRATION_API_KEY: z.string().min(24).optional(),
   INTEGRATION_ADMIN_EMAIL: z.string().email().default("admin@demo.local"),
-  WORKER_ID: z.string().optional(),
+  WORKER_ID: z.string().default("windows-worker-1"),
   WHATSAPP_GATEWAY_MODE: z.enum(["BAILEYS", "MOCK"]).default("BAILEYS"),
   OBJECT_STORAGE_MODE: z.enum(["S3", "MOCK"]).default("S3"),
   SESSION_LEASE_SECONDS: z.coerce.number().int().positive().default(30),
@@ -52,7 +52,7 @@ const schema = z.object({
   AUTO_FAILOVER_WAIT_SECONDS: z.coerce.number().int().min(1).max(3600).default(30),
   AUTO_FAILOVER_MAX_TARGETS: z.coerce.number().int().min(1).max(20).default(3),
   SESSION_QUARANTINE_MINUTES: z.coerce.number().int().min(1).max(10080).default(1440),
-  DEFAULT_COUNTRY_REGION: z.string().length(2).default("BO"),
+  DEFAULT_COUNTRY_REGION: z.string().length(2).default("PY"),
   DEFAULT_AUTO_REPLY: z.string().default("Gracias por escribirnos."),
   S3_ENDPOINT: optionalUrl,
   AWS_REGION: z.string().default("us-east-1"),
@@ -64,7 +64,7 @@ const schema = z.object({
   READINESS_REQUIRE_S3: booleanString,
   ENABLE_LEGACY_MEDIA_UPLOAD: booleanString,
   SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
-  WORKER_SHARD_MODE: z.enum(["AUTO", "STATIC"]).default("AUTO"),
+  WORKER_SHARD_MODE: z.enum(["AUTO", "STATIC"]).default("STATIC"),
   WORKER_SHARD_ID: z.coerce.number().int().nonnegative().default(0),
   WORKER_SHARD_COUNT: z.coerce.number().int().positive().default(1),
   WORKER_NODE_HEARTBEAT_MS: z.coerce.number().int().positive().default(10000),
@@ -84,10 +84,11 @@ const schema = z.object({
   DEFAULT_MAX_CAMPAIGN_CONTACTS: z.coerce.number().int().positive().default(50000),
   DEFAULT_MAX_PENDING_MESSAGES: z.coerce.number().int().positive().default(100000),
   DEFAULT_MONTHLY_MESSAGE_LIMIT: z.coerce.number().int().positive().default(1000000),
+  PROXY_URL: z.string().optional(),
 });
 
 const parsed = schema.parse(process.env);
 export const env = {
   ...parsed,
-  WORKER_ID: parsed.WORKER_ID || process.env.HOSTNAME || `worker-${process.pid}`,
+  WORKER_ID: parsed.WORKER_ID || "windows-worker-1",
 };

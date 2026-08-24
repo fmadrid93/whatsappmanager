@@ -1,10 +1,12 @@
-﻿import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { encodeJson } from "../../shared/utils/json-buffer.js";
 import type {
   AttemptPreparation,
   IMessageAttemptRepository,
   ReconciliationCandidate,
 } from "../../application/ports/repositories/message-attempt.repository.js";
+
+const TX_OPTS = { timeout: 30000, maxWait: 15000 };
 
 function currentPeriod(date = new Date()): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -59,41 +61,29 @@ export class PrismaMessageAttemptRepository implements IMessageAttemptRepository
             state: "FAILED",
             failedAt: new Date(),
             reconcileAfter: null,
-            errorCode: "RECONCILIATION_TIMEOUT",
-            errorMessage: "El intento anterior venció sin confirmación persistida.",
+            errorCode: "UNRESOLVED_TIMEOUT",
+            errorMessage: "El intento anterior no concluyó y fue cerrado para reintento.",
           },
         });
       }
 
-      const current = await tx.messageAttempt.findUnique({
-        where: {
-          sessionId_clientMessageId: {
-            sessionId: input.sessionId,
-            clientMessageId: input.clientMessageId,
-          },
-        },
-      });
-      if (!current) {
-        const created = await tx.messageAttempt.create({ data: { ...input, state: "STARTED" } });
-        return { id: created.id, decision: "SEND" as const };
-      }
-      const restarted = await tx.messageAttempt.update({
-        where: { id: current.id },
+      const created = await tx.messageAttempt.create({
         data: {
+          tenantId: input.tenantId,
+          queueItemId: input.queueItemId,
+          campaignId: input.campaignId,
+          sessionId: input.sessionId,
+          clientMessageId: input.clientMessageId,
           state: "STARTED",
-          startedAt: new Date(),
-          submittedAt: null,
-          acknowledgedAt: null,
-          completedAt: null,
-          failedAt: null,
           reconcileAfter: input.reconcileAfter,
-          errorCode: null,
-          errorMessage: null,
-          whatsappMessageId: null,
         },
       });
-      return { id: restarted.id, decision: "SEND" as const };
-    });
+
+      return {
+        id: created.id,
+        decision: "SEND" as const,
+      };
+    }, TX_OPTS);
   }
 
   async markSubmitted(attemptId: string, whatsappMessageId: string): Promise<void> {
@@ -135,7 +125,7 @@ export class PrismaMessageAttemptRepository implements IMessageAttemptRepository
       if (transitioned.count === 1) {
         await this.recordSentSideEffects(tx, attempt.tenantId, attempt.queueItemId, attempt.campaignId, attempt.sessionId, whatsappMessageId);
       }
-    });
+    }, TX_OPTS);
   }
 
   async markFailed(attemptId: string, errorCode: string, errorMessage: string): Promise<void> {
@@ -190,7 +180,7 @@ export class PrismaMessageAttemptRepository implements IMessageAttemptRepository
         }
       }
       return true;
-    });
+    }, TX_OPTS);
   }
 
   private async recordSentSideEffects(
@@ -275,6 +265,6 @@ export class PrismaMessageAttemptRepository implements IMessageAttemptRepository
           lastErrorMessage: "No se encontró confirmación del intento anterior; se habilitó un reintento controlado.",
         },
       });
-    });
+    }, TX_OPTS);
   }
 }
