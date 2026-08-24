@@ -1,0 +1,48 @@
+name: Deploy Automático a EC2
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  deploy:
+    name: Despliegue en AWS EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Conectar por SSH y Desplegar
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            echo "🚀 Iniciando despliegue automático..."
+            cd /var/www/whatsappmanager
+
+            # 1. Descargar últimos cambios de Git
+            git pull origin ${{ github.ref_name }}
+
+            # 2. Compilar Backend
+            echo "⚙️ Compilando Backend..."
+            cd backend
+            npm install --production=false
+            npm run prisma:generate
+            npm run build
+
+            # 3. Compilar Frontend Angular
+            echo "🎨 Compilando Frontend Angular..."
+            cd ../frontend
+            npm install --production=false
+            npm run build
+
+            # 4. Reiniciar procesos con PM2 sin tiempo de inactividad
+            echo "♻️ Reiniciando Workers y API con PM2..."
+            cd ..
+            pm2 reload ecosystem.config.cjs || pm2 start ecosystem.config.cjs
+            pm2 save
+
+            echo "✅ ¡Despliegue completado exitosamente!"
