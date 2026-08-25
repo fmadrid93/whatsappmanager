@@ -3,27 +3,25 @@ module.exports = {
     {
       name: 'whatsapp-api',
       script: './backend/dist/api/main.js',
-      cwd: './',
+      cwd: '/var/www/whatsappmanager',
+      node_args: '--env-file=/var/www/whatsappmanager/.env',
       instances: 1,
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
       env: {
-        NODE_ENV: 'production',
-        PORT: 3001,
+        PORT: 3000,
       },
     },
     {
       name: 'whatsapp-worker',
       script: './backend/dist/worker/main.js',
-      cwd: './',
+      cwd: '/var/www/whatsappmanager',
+      node_args: '--env-file=/var/www/whatsappmanager/.env',
       instances: 1,
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
-      env: {
-        NODE_ENV: 'production',
-      },
     },
   ],
 };
