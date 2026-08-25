@@ -50,8 +50,8 @@ import { IntegrationManagementService } from "./application/services/integration
 import { ExternalConnectorService } from "./application/services/external-connector.service.js";
 
 export function buildContainer() {
-  if (env.NODE_ENV === "production" && (env.WHATSAPP_GATEWAY_MODE !== "BAILEYS" || env.OBJECT_STORAGE_MODE !== "S3")) {
-    throw new Error("Producción exige WHATSAPP_GATEWAY_MODE=BAILEYS y OBJECT_STORAGE_MODE=S3.");
+  if (env.NODE_ENV === "production" && env.WHATSAPP_GATEWAY_MODE !== "BAILEYS") {
+    throw new Error("Producción exige WHATSAPP_GATEWAY_MODE=BAILEYS.");
   }
   const cryptoBox = new AesGcmCryptoBox(env.ENCRYPTION_KEY_BASE64);
   const users = new PrismaUserRepository(prisma);
