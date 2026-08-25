@@ -678,7 +678,7 @@ export function createRoutes(container: AppContainer): Router {
             isBotActive: false,
           },
         });
-      } else if (session.status !== "CONNECTED" && session.status !== "WORKING") {
+      } else if (["DELETED", "LOGGED_OUT", "DISCONNECTED", "QUARANTINED", "PAIRING_FAILED"].includes(session.status)) {
         await container.prisma.whatsAppSession.update({
           where: { id: session.id },
           data: { status: "STARTING", lastConnectionError: null, leaseOwner: null, leaseExpiresAt: null },

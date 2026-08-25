@@ -126,15 +126,12 @@ export class PrismaSessionRepository implements ISessionRepository {
       where: {
         id: sessionId,
         deletedAt: null,
-        OR: [
-          { leaseOwner: workerId },
-          { leaseOwner: null },
-        ],
       },
       data: { leaseOwner: workerId, leaseExpiresAt: expiresAt, lastHeartbeatAt: new Date() },
     });
     return result.count === 1;
   }
+
 
   async releaseLease(sessionId: string, workerId: string): Promise<void> {
     await this.prisma.whatsAppSession.updateMany({
