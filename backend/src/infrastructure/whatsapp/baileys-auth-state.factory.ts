@@ -1,4 +1,4 @@
-﻿import {
+import {
   BufferJSON,
   initAuthCreds,
   proto,
@@ -42,17 +42,24 @@ export class BaileysAuthStateFactory {
           return result as never;
         },
         set: async (data) => {
+          const tasks: Promise<void>[] = [];
           for (const [category, categoryValues] of Object.entries(data)) {
             for (const [id, value] of Object.entries(categoryValues ?? {})) {
-              await this.repository.setKey(
-                sessionId,
-                category,
-                id,
-                value ? serialize(value) : null,
+              tasks.push(
+                this.repository.setKey(
+                  sessionId,
+                  category,
+                  id,
+                  value ? serialize(value) : null,
+                ),
               );
             }
           }
+          if (tasks.length > 0) {
+            await Promise.all(tasks);
+          }
         },
+
       },
     };
 

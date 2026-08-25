@@ -42,6 +42,23 @@ function errorText(error: unknown): string {
   return String(error ?? "connectionClosed").slice(0, 1900);
 }
 
+let cachedBaileysVersion: { version: [number, number, number]; isLatest: boolean } | null = null;
+let lastVersionFetchAt = 0;
+
+async function getCachedBaileysVersion() {
+  const now = Date.now();
+  if (cachedBaileysVersion && now - lastVersionFetchAt < 24 * 60 * 60 * 1000) {
+    return cachedBaileysVersion;
+  }
+  try {
+    cachedBaileysVersion = await fetchLatestBaileysVersion();
+    lastVersionFetchAt = now;
+    return cachedBaileysVersion;
+  } catch {
+    return cachedBaileysVersion ?? { version: [2, 3000, 1015901307] as [number, number, number], isLatest: true };
+  }
+}
+
 export function isRestartRequiredStatus(statusCode: number | undefined): boolean {
   return (
     statusCode === DisconnectReason.restartRequired ||
@@ -105,7 +122,7 @@ export class BaileysSessionGateway implements ISessionGateway {
 
       const authFactory = new BaileysAuthStateFactory(this.authRepository);
       const { state, saveCreds } = await authFactory.create(sessionId);
-      const { version, isLatest } = await fetchLatestBaileysVersion();
+      const { version, isLatest } = await getCachedBaileysVersion();
 
       if (this.stoppingSessions.has(sessionId)) {
         return;
