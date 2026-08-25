@@ -271,8 +271,10 @@ export class MessageQueueWorker {
           clientMessageId: item.clientMessageId,
         });
       } else {
+        await socket.sendPresenceUpdate("composing", resolvedDestinationJid).catch(() => {});
         const sent = await socket.sendMessage(resolvedDestinationJid, { text: payload.text }, { messageId: item.clientMessageId });
         if (!sent?.key.id) throw new Error("WhatsApp no devolvió identificador del mensaje.");
+
         sentMessageId = sent.key.id;
         if (sent.message) {
           await this.messages.save({

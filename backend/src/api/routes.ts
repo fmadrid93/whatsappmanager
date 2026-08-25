@@ -787,9 +787,11 @@ export function createRoutes(container: AppContainer): Router {
         if (container.whatsapp.sockets.has(sessionId)) {
           const socket = container.whatsapp.sockets.get(sessionId);
           const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
+          await socket.sendPresenceUpdate("composing", jid).catch(() => {});
           await socket.sendMessage(jid, { text: message });
           return response.json({ ok: true, sent: true });
         }
+
 
         const fresh = session || (await container.prisma.whatsAppSession.findUnique({ where: { id: sessionId } }));
         if (!fresh) {

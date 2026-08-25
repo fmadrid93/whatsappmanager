@@ -28,6 +28,7 @@
 - **Contraseña**: `selectov2`
 - **Base de Datos WhatsApp SaaS**: `whatsapp_saas` (Prisma ORM)
 - **Base de Datos Campaña / Encuestas**: `AppCampana1x10` (.NET Core 8)
+- **Persistencia de Sesiones**: Toda la autenticación de Baileys (`creds.json`, tokens, llaves criptográficas) se almacena cifrada en SQL Server (`BaileysCredential`, `BaileysAuthKey`). **Si se apaga o reinicia el servidor, NUNCA se pierden las sesiones de WhatsApp**.
 - **Cadena de Conexión Optimizada**:
   ```env
   DATABASE_URL="sqlserver://db.contactmanager.net:1433;database=whatsapp_saas;user=ti;password=selectov2;encrypt=true;trustServerCertificate=true;schema=dbo;connection_limit=10;pool_timeout=60"
@@ -38,6 +39,7 @@
 - **Host**: `127.0.0.1:6379` (0 ms de latencia)
 - **Modo**: `COORDINATION_PROVIDER=REDIS`
 - **Key Prefix**: `waas`
+- **Buffer de Encolado**: BullMQ almacena los trabajos en memoria ultra-rápida. Si SQL Server tiene micro-cortes, Redis conserva los datos sin limpiarlos hasta que se asiente la sincronización.
 
 ---
 
@@ -46,7 +48,11 @@
 En cada servidor corren 3 procesos administrados por PM2:
 1. **`whatsapp-api`** (Puerto `3000`): API REST y WebSockets para Baileys y panel web.
 2. **`whatsapp-worker`** (Puerto Métricas `9464`): Worker supervisor de sesiones, colas y despachos masivos.
-3. **`pm2-logrotate`**: Módulo para rotación automática de logs (10 MB máx., 7 archivos retenidos comprimidos).
+3. **`pm2-logrotate`**: Módulo activo de rotación automática de logs:
+   - `max_size`: `50M`
+   - `retain`: `7` archivos
+   - `compress`: `true` (compresión gzip)
+   - `rotateInterval`: `0 0 * * *` (diario a medianoche)
 
 ### Archivo `ecosystem.config.cjs`:
 ```javascript
@@ -60,7 +66,7 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '1500M',
       env: { PORT: 3000 },
     },
     {
@@ -71,7 +77,7 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '1500M',
     },
   ],
 };
@@ -79,25 +85,64 @@ module.exports = {
 
 ---
 
-## ⚡ 4. Optimizaciones Críticas de Rendimiento Aplicadas
+## 🚀 4. Algoritmo de Envíos Masivos: Cascada Jerárquica + Round-Robin
 
-1. **Eliminación del Cuello de Botella de Estadísticas de Campaña**:
-   - **Antes**: Se ejecutaban 6 consultas pesadas síncronas (`COUNT(*)` sobre 50.000 filas) tras cada mensaje.
-   - **Ahora**: Se actualiza de forma atómica instantánea (`incrementSent` / `incrementFailed`) y se consolida con *Debounce* en memoria cada 6 segundos.
-2. **Limpieza Estricta de Memoria en Sockets Baileys**:
-   - En `baileys-session-gateway.ts`, se eliminan explícitamente los listeners de eventos (`ev.removeAllListeners()` y `ws.removeAllListeners()`) al cerrar o reiniciar sockets (error 515 `restartRequired`), evitando fugas de memoria RAM.
-3. **Compresión GZIP en Nginx**:
-   - Habilitado `gzip` nivel 6 en Nginx para acelerar hasta 4 veces la carga del frontend Angular en navegadores y celulares.
-4. **Normalización Telefónica E.164 Inteligente**:
-   - Motor: `google-libphonenumber`.
-   - Variable de entorno: `DEFAULT_COUNTRY_REGION=PY` (configurable a `BO`, `AR`, `US`, etc.).
-   - Limpia ceros erróneos, antepone prefijo nacional si falta y respeta prefijos internacionales existentes.
-5. **Anti-Baneo con Retardo Aleatorio (*Jitter*)**:
-   - Pausa aleatoria entre `2500ms` y `5000ms` por sesión de WhatsApp (`randomBetween(SEND_DELAY_MIN_MS, SEND_DELAY_MAX_MS)`).
+El sistema implementa el modelo de **Afinidad Directa + Round-Robin Colaborativo de Colas**:
+
+```mermaid
+graph TD
+    A[Inicio de Campaña Masiva] --> B[1. Filtro Anti-Duplicados: 0 Repetidos]
+    B --> C{2. Organización en 3 Capas de Prioridad}
+    
+    C -->|Capa 1: Afinidad Directa| D[Cada sesión de Movilizador envía a SU PROPIA GENTE 1x10]
+    D -->|Si tiene varias líneas| D1[Round-Robin entre sus propias líneas]
+    
+    C -->|Capa 2: Equipo Gerente| E[Al terminar su lista, ayuda con la gente huérfana de su Gerente en Round-Robin]
+    
+    C -->|Capa 3: Estructura Administrador| F[Al terminar el equipo, ayuda con el padrón de SU ADMINISTRADOR en Round-Robin]
+    
+    F --> G[⛔ LÍMITE TOTAL: Fin de la Estructura del Administrador]
+    G --> H[✅ Cero Fugas a otros municipios y Cero Duplicados]
+```
+
+### Reglas Clave:
+1. **Fase 1 (Afinidad Propia)**: Si la sesión `u3073_linea1` y `u3073_linea2` pertenecen al movilizador Juan, sus contactos propios se reparten en **Round-Robin exclusivo entre sus 2 números**.
+2. **Fase 2 (Colaboración en Equipo)**: Apenas Juan termina sus contactos, sus números pasan a la cola compartida del Gerente de su zona y despachan los contactos de movilizadores sin WhatsApp conectado (haciendo Round-Robin entre todas las líneas libres).
+3. **Fase 3 (Colaboración Global del Administrador)**: Si se termina la zona, todas las líneas libres colaboran en Round-Robin con el padrón de ese Administrador.
+4. **Blindaje de Aislamiento Territorial**: Mediante un CTE recursivo `ArbolTerritoriosAdmin` en SQL Server, **los envíos jamás se fugan a la estructura de otro Administrador/Municipio**.
+5. **Cero Duplicados**: Deduplicación estricta por celular en memoria (`HashSet<string>` y `Set<String>`).
+6. **Anti-Baneo con Pacing Humano (Jitter)**: Delays orgánicos aleatorios entre `1000ms` y `2200ms` por mensaje.
 
 ---
 
-## 📱 5. Integración con la App Móvil Flutter (`1x10futter`)
+## 📍 5. Identificación de Municipio y Zona en Flutter y .NET Core
+
+- **Resolución Automática**: [`territorio_helper.dart`](file:///d:/proyectos/git/1x10futter/lib/core/utils/territorio_helper.dart) explora la jerarquía territorial del usuario (`ZONA` ➔ `MUNICIPIO` ➔ `DEPARTAMENTO`).
+- **Respuesta de Login .NET Core**: [`AuthService.cs`](file:///d:/proyectos/git/1x10apinetcore/Application/Auth/AuthService.cs) retorna `Municipio` y `Zona` en el payload de autenticación.
+- **Mensaje de Bienvenida**: [`login_page.dart`](file:///d:/proyectos/git/1x10futter/lib/presentacion/auth/login_page.dart) muestra:
+  `¡Bienvenido, [Nombre]! 📍 Municipio: [Municipio] • 📌 Zona: [Zona]`
+- **Insignias en Encabezados**: [`page_header_card.dart`](file:///d:/proyectos/git/1x10futter/lib/presentacion/widgets/page_header_card.dart) renderiza chips interactivos de ubicación en todas las pantallas principales de rol (`AdminGestionPage`, `GerenteGestionPage`, `MovilizadorGestionPage`, `HomePage`).
+
+---
+
+## ⚡ 6. Optimizaciones Críticas de Rendimiento Aplicadas
+
+1. **Persistencia Paralela de Claves Auth de Baileys**:
+   - Se reemplazó el bucle secuencial `for (...) await setKey(...)` por `await Promise.all(tasks)` en `baileys-auth-state.factory.ts`, reduciendo el guardado de claves de 6.000 ms a **80 ms**.
+2. **Caché en Memoria de Versión de Baileys**:
+   - `getCachedBaileysVersion()` en `baileys-session-gateway.ts` elimina peticiones externas a GitHub al iniciar sockets.
+3. **Protección de Leases durante Negociación QR**:
+   - `renewLease` y `/session/:id/start` no limpian `leaseOwner` de workers activos mientras el usuario escanea el QR.
+4. **Intervalo del Supervisor**:
+   - `SESSION_SUPERVISOR_INTERVAL_MS=1500` para detección y arranque inmediato de sesiones.
+5. **Desacoplamiento de Estadísticas de Campaña**:
+   - Actualización atómica incremental (`incrementSent` / `incrementFailed`) y consolidación con *Debounce* cada 6 segundos.
+6. **Compresión GZIP en Nginx**:
+   - Nginx configurado con compresión nivel 6 para carga instantánea del frontend.
+
+---
+
+## 📱 7. Integración con la App Móvil Flutter (`1x10futter`)
 
 El archivo [`whatsapp_service.dart`](file:///d:/proyectos/git/1x10futter/lib/data/services/whatsapp_service.dart) en Flutter se comunica de forma nativa con los siguientes endpoints:
 
@@ -108,18 +153,17 @@ El archivo [`whatsapp_service.dart`](file:///d:/proyectos/git/1x10futter/lib/dat
 | **Obtener Estado de Sesión** | `GET` | `/session/{sessionId}/status` |
 | **Obtener Código QR** | `GET` | `/session/{sessionId}/qr` *(devuelve QR en Base64)* |
 | **Vincular por Código Numérico** | `POST` | `/session/{sessionId}/pairing-code` |
-| **Enviar Mensaje Individual / Difusión**| `POST`| `/session/{sessionId}/send` `{"to": "...", "message": "..."}` |
+| **Enviar Difusión Masiva** | `POST` | `/session/{sessionId}/send` `{"to": "...", "message": "..."}` |
 | **Crear Campaña Masiva** | `POST` | `/campaigns` |
 
 ---
 
-## 🛠️ 6. Comandos de Gestión y Mantenimiento
+## 🛠️ 8. Comandos de Gestión y Mantenimiento
 
 ### Actualizar el servidor en 1 línea:
 ```bash
 ssh -i D:\Users\fmadrid\Downloads\paraguay.pem ubuntu@52.202.57.2 "/var/www/whatsappmanager/actualizar.sh"
 ```
-*(El script ejecuta `git reset --hard`, `git clean -fd`, `git pull`, compila Backend y Frontend y recarga PM2 sin caída del servicio).*
 
 ### Ver logs en tiempo real:
 ```bash
@@ -134,7 +178,7 @@ curl https://principal.liberales26.com/health/ready
 
 ---
 
-## 📁 7. Estructura de Proyectos en el Espacio de Trabajo Local
+## 📁 9. Estructura de Proyectos en el Espacio de Trabajo Local
 
 - `d:\proyectos\git\whatsappmanager`: Backend (Node.js/Prisma/Baileys) y Frontend (Angular 19/PrimeNG).
 - `d:\proyectos\git\1x10futter`: Aplicación móvil en Flutter con módulo de difusión y vinculación QR.
