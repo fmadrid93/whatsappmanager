@@ -1,4 +1,4 @@
-﻿import { getContentType, proto } from "@whiskeysockets/baileys";
+import { getContentType, proto } from "@whiskeysockets/baileys";
 import type { IMessageQueueRepository } from "../application/ports/repositories/message-queue.repository.js";
 import type { IMessageAttemptRepository } from "../application/ports/repositories/message-attempt.repository.js";
 import type { IWhatsAppMessageRepository } from "../application/ports/repositories/whatsapp-message.repository.js";
@@ -27,6 +27,7 @@ export class MessageQueueWorker {
   private readonly haltedSessions = new Set<string>();
   private readonly haltedSeenAbsent = new Set<string>();
   private readonly consecutiveTransientFailures = new Map<string, number>();
+  private readonly pendingStatsRefresh = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly queue: IMessageQueueRepository,
@@ -76,6 +77,21 @@ export class MessageQueueWorker {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    for (const timeout of this.pendingStatsRefresh.values()) {
+      clearTimeout(timeout);
+    }
+    this.pendingStatsRefresh.clear();
+  }
+
+  private scheduleCampaignStatsRefresh(campaignId: string): void {
+    if (this.pendingStatsRefresh.has(campaignId)) return;
+    const timeout = setTimeout(() => {
+      this.pendingStatsRefresh.delete(campaignId);
+      void this.campaigns.refreshStats(campaignId).catch((err) => {
+        logger.warn({ err, campaignId }, "Error actualizando estadísticas consolidadas de campaña.");
+      });
+    }, 6000);
+    this.pendingStatsRefresh.set(campaignId, timeout);
   }
 
   async stopAndWait(timeoutMs: number): Promise<void> {
@@ -280,7 +296,8 @@ export class MessageQueueWorker {
       await this.queue.markSent(item.id, sentMessageId);
       await this.attempts.markCompleted(attempt.id, sentMessageId);
       await this.capacity.recordMessageSent({ tenantId: item.tenantId, queueItemId: item.id });
-      await this.campaigns.refreshStats(item.campaignId);
+      void this.campaigns.incrementSent(item.campaignId);
+      this.scheduleCampaignStatsRefresh(item.campaignId);
       this.consecutiveTransientFailures.set(sessionId, 0);
       metrics.increment("wa_messages_sent_total", "Messages confirmed as sent.", { session: sessionId, result: "submitted" });
       await this.emitSafely({
@@ -309,7 +326,8 @@ export class MessageQueueWorker {
           retryAt: new Date(),
           forceDeadLetter: true,
         });
-        await this.campaigns.refreshStats(item.campaignId);
+        void this.campaigns.incrementFailed(item.campaignId);
+        this.scheduleCampaignStatsRefresh(item.campaignId);
         metrics.increment("wa_messages_failed_total", "Message send failures.", { session: sessionId, code: failure.code });
         logger.warn({ error, queueItemId: item.id, sessionId, classification: failure.kind }, "Destinatario enviado directamente a DLQ.");
         await this.emitSafely({
@@ -414,7 +432,7 @@ export class MessageQueueWorker {
         errorMessage: failure.message,
         retryAt: new Date(Date.now() + retrySeconds * 1000),
       });
-      await this.campaigns.refreshStats(item.campaignId);
+      this.scheduleCampaignStatsRefresh(item.campaignId);
       metrics.increment("wa_messages_failed_total", "Message send failures.", { session: sessionId, code: failure.code });
       logger.error({ error, queueItemId: item.id, sessionId, classification: failure.kind, failures }, "Error temporal enviando mensaje de cola.");
       return false;

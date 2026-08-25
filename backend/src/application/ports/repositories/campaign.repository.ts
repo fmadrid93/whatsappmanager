@@ -1,4 +1,4 @@
-﻿import type { CampaignMessagePayload } from "../../../domain/campaign/campaign-message.js";
+import type { CampaignMessagePayload } from "../../../domain/campaign/campaign-message.js";
 
 export interface CampaignRecord {
   id: string;
@@ -51,5 +51,8 @@ export interface ICampaignRepository {
     ownerUserId: string;
     sessionIds: string[];
   }): Promise<AddCampaignSessionsResult>;
+  incrementSent(campaignId: string): Promise<void>;
+  incrementFailed(campaignId: string): Promise<void>;
   refreshStats(campaignId: string): Promise<void>;
 }
+

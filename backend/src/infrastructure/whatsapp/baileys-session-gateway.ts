@@ -194,12 +194,17 @@ export class BaileysSessionGateway implements ISessionGateway {
     this.registry.delete(sessionId);
     this.stoppingSessions.add(sessionId);
     try {
+      socket.ev.removeAllListeners("connection.update");
+      socket.ev.removeAllListeners("creds.update");
+      socket.ev.removeAllListeners("messages.upsert");
+      socket.ws?.removeAllListeners();
       (socket as unknown as { end: (error?: Error) => void }).end(new Error("Worker detenido"));
     } catch {
       // La conexión puede haberse cerrado antes.
     }
     await this.sessions.releaseLease(sessionId, this.workerId);
   }
+
 
   private async generatePairingCode(sessionId: string, socket: WASocket, phoneE164?: string): Promise<string> {
     const digits = String(phoneE164 ?? "").replace(/\D/g, "");

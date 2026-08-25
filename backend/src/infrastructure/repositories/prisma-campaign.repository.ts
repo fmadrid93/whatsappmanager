@@ -1,4 +1,4 @@
-﻿import crypto from "node:crypto";
+import crypto from "node:crypto";
 import type { Campaign, PrismaClient } from "@prisma/client";
 import type {
   AddCampaignSessionsResult,
@@ -278,6 +278,28 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     });
   }
 
+  async incrementSent(campaignId: string): Promise<void> {
+    try {
+      await this.prisma.campaign.update({
+        where: { id: campaignId },
+        data: { sentMessages: { increment: 1 } },
+      });
+    } catch {
+      // Ignorar si la campaña ya no existe o fue eliminada
+    }
+  }
+
+  async incrementFailed(campaignId: string): Promise<void> {
+    try {
+      await this.prisma.campaign.update({
+        where: { id: campaignId },
+        data: { failedMessages: { increment: 1 } },
+      });
+    } catch {
+      // Ignorar si la campaña ya no existe o fue eliminada
+    }
+  }
+
   async refreshStats(campaignId: string): Promise<void> {
     const now = new Date();
     const [sent, failed, unfinished, runnableUnfinished, campaign] = await Promise.all([
@@ -322,3 +344,4 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     });
   }
 }
+
