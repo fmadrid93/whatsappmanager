@@ -593,19 +593,39 @@ export function createRoutes(container: AppContainer): Router {
   );
 
   router.post(
-    "/sessions/:id/relink",
+    ["/session/:id/reset", "/sessions/:id/reset", "/sessions/:id/relink"],
     asyncHandler(async (request, response) => {
       const identifier = String(request.params.id);
       const session = await resolveSession(identifier);
       if (session) {
+        try {
+          await container.whatsapp.sessionGateway.stop(session.id);
+        } catch {}
+        await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
+
+        await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.whatsAppSession.update({
           where: { id: session.id },
-          data: { status: "STARTING", qrCode: null, pairingCode: null, phoneE164: null, whatsappJid: null, lastConnectionError: null, leaseOwner: null, leaseExpiresAt: null },
+          data: {
+            status: "STARTING",
+            qrCode: null,
+            qrUpdatedAt: null,
+            pairingCode: null,
+            pairingCodeUpdatedAt: null,
+            phoneE164: null,
+            whatsappJid: null,
+            lastConnectionError: null,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            connectedAt: null,
+            disconnectedAt: new Date(),
+          },
         });
       }
-      response.json({ ok: true });
+      response.json({ ok: true, reset: true });
     }),
   );
+
 
   router.post(
     "/sessions/purge-old",
