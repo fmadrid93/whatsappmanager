@@ -139,6 +139,11 @@ graph TD
    - Actualización atómica incremental (`incrementSent` / `incrementFailed`) y consolidación con *Debounce* cada 6 segundos.
 6. **Compresión GZIP en Nginx**:
    - Nginx configurado con compresión nivel 6 para carga instantánea del frontend.
+7. **Enrutamiento Nginx Completo y CORS Universal**:
+   - Proxy configurado para `/api`, `/sessions`, `/session`, `/system`, `/messages`, `/auth`, `/campaigns`, `/health`, `/metrics`, `/version` y `/connectors` con soporte CORS para clientes Flutter Web y móviles.
+8. **Simulación de Presencia Humana de Escritura**:
+   - Envío de evento `sendPresenceUpdate("composing", jid)` antes de cada despacho para simular interacción humana y proteger las líneas contra bloqueos.
+
 
 ---
 

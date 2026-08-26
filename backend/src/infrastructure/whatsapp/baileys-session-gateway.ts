@@ -164,10 +164,11 @@ export class BaileysSessionGateway implements ISessionGateway {
       });
 
       this.registry.set(sessionId, socket);
+      this.registerConnectionUpdates(sessionId, socket);
       socket.ev.on("creds.update", saveCreds);
       this.messagePersistence.register(socket, sessionId);
       this.inbound.register(socket, sessionId);
-      this.registerConnectionUpdates(sessionId, socket);
+
 
       if (!state.creds.registered && session.pairingMethod === "CODE" && session.expectedPhoneE164) {
         try {
