@@ -19,10 +19,18 @@ export function createApp(
 ) {
   const app = express();
   app.disable("x-powered-by");
+  app.set("etag", false);
   app.set("trust proxy", container.env.TRUST_PROXY);
+  app.use((_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+  });
   app.use(requestContextMiddleware);
   app.use(metricsMiddleware);
   app.use(helmet({ crossOriginResourcePolicy: false }));
+
   app.use(cors({
     origin(origin, callback) {
       if (
