@@ -900,6 +900,65 @@ export function createRoutes(container: AppContainer): Router {
     }),
   );
 
+  router.get(
+    ["/session/:id/messages", "/sessions/:id/messages"],
+    asyncHandler(async (request, response) => {
+      const identifier = String(request.params.id);
+      const session = await resolveSession(identifier);
+      if (!session) {
+        return response.json({ ok: true, total: 0, messages: [] });
+      }
+
+      const limit = Math.min(Math.max(Number(request.query.limit) || 100, 1), 500);
+
+      const items = await container.prisma.messageQueue.findMany({
+        where: {
+          assignedSessionId: session.id,
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        select: {
+          id: true,
+          contactName: true,
+          recipientE164: true,
+          recipientJid: true,
+          status: true,
+          attemptCount: true,
+          sentMessageId: true,
+          sentAt: true,
+          createdAt: true,
+          lastErrorMessage: true,
+          payload: true,
+        },
+      });
+
+
+      const mapped = items.map((item) => {
+        let text = "";
+        try {
+          if (item.payload) {
+            const parsed = JSON.parse(Buffer.from(item.payload).toString("utf8"));
+            text = parsed.text || parsed.caption || "";
+          }
+        } catch {}
+        return {
+          id: item.id,
+          contactName: item.contactName,
+          recipient: item.recipientE164 || item.recipientJid || "",
+          status: item.status,
+          sentMessageId: item.sentMessageId,
+          sentAt: item.sentAt,
+          createdAt: item.createdAt,
+          error: item.lastErrorMessage,
+          text,
+        };
+      });
+
+      response.json({ ok: true, total: mapped.length, messages: mapped });
+    }),
+  );
+
+
   router.post(
     "/integrations/campaigns",
     asyncHandler(async (request, response) => {
