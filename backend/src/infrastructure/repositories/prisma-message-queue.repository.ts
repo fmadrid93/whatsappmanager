@@ -1,4 +1,4 @@
-﻿import crypto from "node:crypto";
+import crypto from "node:crypto";
 import { Prisma, type MessageQueue, type PrismaClient } from "@prisma/client";
 import type {
   AutomaticFailoverResult,
@@ -404,9 +404,10 @@ export class PrismaMessageQueueRepository implements IMessageQueueRepository {
           assignedSessionId: input.sessionId,
           status: "PENDING",
           availableAt: { lte: now },
-          campaign: { status: "RUNNING" },
+          campaign: { status: { in: ["RUNNING", "ACTIVE"] } },
           assignedSession: { is: { status: "CONNECTED", deletedAt: null } },
           OR: [{ lockExpiresAt: null }, { lockExpiresAt: { lt: now } }],
+
         },
         orderBy: [{ priority: "asc" }, { createdAt: "asc" }],
       });

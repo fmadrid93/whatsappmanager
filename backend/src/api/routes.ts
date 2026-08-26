@@ -533,12 +533,25 @@ export function createRoutes(container: AppContainer): Router {
         return response.status(404).json({ error: "Sesión no encontrada" });
       }
 
-      if (session.status === "DELETED" || session.status === "LOGGED_OUT" || session.status === "QUARANTINED") {
+      if (["DELETED", "LOGGED_OUT", "QUARANTINED", "PAIRING_FAILED", "DISCONNECTED"].includes(session.status)) {
+        await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
+        await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.whatsAppSession.update({
           where: { id: session.id },
-          data: { status: "STARTING", pairingMethod: "QR", qrCode: null, pairingCode: null, lastConnectionError: null, leaseOwner: null, leaseExpiresAt: null },
+          data: {
+            status: "STARTING",
+            pairingMethod: "QR",
+            qrCode: null,
+            pairingCode: null,
+            phoneE164: null,
+            whatsappJid: null,
+            lastConnectionError: null,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+          },
         });
       }
+
 
       const freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
       const isConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
@@ -699,9 +712,20 @@ export function createRoutes(container: AppContainer): Router {
           },
         });
       } else if (["DELETED", "LOGGED_OUT", "DISCONNECTED", "QUARANTINED", "PAIRING_FAILED"].includes(session.status)) {
+        await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
+        await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.whatsAppSession.update({
           where: { id: session.id },
-          data: { status: "STARTING", lastConnectionError: null, leaseOwner: null, leaseExpiresAt: null },
+          data: {
+            status: "STARTING",
+            qrCode: null,
+            pairingCode: null,
+            phoneE164: null,
+            whatsappJid: null,
+            lastConnectionError: null,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+          },
         });
       }
       response.json({ ok: true, sessionId: session.id, name: session.name });
@@ -744,12 +768,25 @@ export function createRoutes(container: AppContainer): Router {
             isBotActive: false,
           },
         });
-      } else if (session.status === "DELETED" || session.status === "LOGGED_OUT" || session.status === "QUARANTINED") {
+      } else if (["DELETED", "LOGGED_OUT", "DISCONNECTED", "QUARANTINED", "PAIRING_FAILED"].includes(session.status)) {
+        await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
+        await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.whatsAppSession.update({
           where: { id: session.id },
-          data: { status: "STARTING", pairingMethod: "QR", qrCode: null, pairingCode: null, lastConnectionError: null, leaseOwner: null, leaseExpiresAt: null },
+          data: {
+            status: "STARTING",
+            pairingMethod: "QR",
+            qrCode: null,
+            pairingCode: null,
+            phoneE164: null,
+            whatsappJid: null,
+            lastConnectionError: null,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+          },
         });
       }
+
 
       // Re-consultar el registro para obtener el qrCode actualizado
       const freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
@@ -818,17 +855,25 @@ export function createRoutes(container: AppContainer): Router {
           return response.status(404).json({ error: "Sesión no encontrada" });
         }
 
-        let campaign = await container.prisma.campaign.findFirst({ where: { tenantId: fresh.tenantId } });
+        let campaign = await container.prisma.campaign.findFirst({
+          where: { tenantId: fresh.tenantId, name: "Mensajes Directos API" },
+        });
         if (!campaign) {
           campaign = await container.prisma.campaign.create({
             data: {
               tenantId: fresh.tenantId,
-              name: "Mensajes Directos",
-              status: "ACTIVE",
+              name: "Mensajes Directos API",
+              status: "RUNNING",
               messagePayload: Buffer.from("{}"),
             },
           });
+        } else if (campaign.status !== "RUNNING") {
+          await container.prisma.campaign.update({
+            where: { id: campaign.id },
+            data: { status: "RUNNING" },
+          });
         }
+
 
         await container.prisma.messageQueue.create({
           data: {

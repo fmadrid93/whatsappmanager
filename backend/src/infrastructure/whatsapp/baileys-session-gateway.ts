@@ -335,11 +335,14 @@ export class BaileysSessionGateway implements ISessionGateway {
               lastConnectionCode: statusCode ?? 401,
               lastConnectionError: connectionError,
               lastConnectionAt: new Date(),
+              whatsappJid: null,
+              phoneE164: null,
               clearQr: true,
               clearPairingCode: true,
             });
             await this.failover.handleLoggedOut(sessionId);
             await this.sessions.releaseLease(sessionId, this.workerId);
+
           } else if (pairingRejected) {
             await this.sessions.updateStatus(sessionId, "PAIRING_FAILED", {
               disconnectReason: "405",
