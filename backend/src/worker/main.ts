@@ -9,6 +9,7 @@ import { startMetricsServer } from "../shared/observability/metrics-server.js";
 import { metrics } from "../shared/observability/metrics.js";
 import { OutboxPublisherWorker } from "./outbox-publisher-worker.js";
 import { WorkerNodeHeartbeat } from "./worker-node-heartbeat.js";
+import { RecurringCampaignWorker } from "./recurring-campaign-worker.js";
 
 const container = buildContainer();
 let draining = false;
@@ -89,6 +90,11 @@ const outboxWorker = new OutboxPublisherWorker(
   container.env.OUTBOX_POLL_INTERVAL_MS,
 );
 
+const recurringCampaignWorker = new RecurringCampaignWorker(
+  container.services.recurringCampaignService,
+  container.env.RECURRING_CAMPAIGN_CHECK_INTERVAL_MS,
+);
+
 const workerHeartbeat = new WorkerNodeHeartbeat(
   container.repositories.workerNodes,
   container.env.WORKER_ID,
@@ -105,6 +111,7 @@ preparationWorker.start();
 queueWorker.start();
 reconciliationWorker.start();
 outboxWorker.start();
+recurringCampaignWorker.start();
 logger.info({
   workerId: container.env.WORKER_ID,
   version: container.env.APP_VERSION,
@@ -131,6 +138,7 @@ async function shutdown(signal: string): Promise<void> {
       queueWorker.stopAndWait(timeoutMs),
       reconciliationWorker.stopAndWait(timeoutMs),
       outboxWorker.stopAndWait(timeoutMs),
+      recurringCampaignWorker.stopAndWait(timeoutMs),
     ]);
     await workerHeartbeat.stop();
     await supervisor.stop();

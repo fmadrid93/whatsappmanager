@@ -917,4 +917,24 @@ export class PrismaMessageQueueRepository implements IMessageQueueRepository {
     });
     return result.count;
   }
+
+  async findExistingRecipients(tenantId: string, recipientsE164: string[]): Promise<Set<string>> {
+    const unique = [...new Set(recipientsE164)];
+    if (unique.length === 0) return new Set();
+
+    const found = new Set<string>();
+    const CHUNK_SIZE = 1000; // límite prudente para cláusulas IN de SQL Server
+    for (let i = 0; i < unique.length; i += CHUNK_SIZE) {
+      const chunk = unique.slice(i, i + CHUNK_SIZE);
+      const rows = await this.prisma.messageQueue.findMany({
+        where: { tenantId, recipientE164: { in: chunk } },
+        select: { recipientE164: true },
+        distinct: ["recipientE164"],
+      });
+      for (const row of rows) {
+        if (row.recipientE164) found.add(row.recipientE164);
+      }
+    }
+    return found;
+  }
 }

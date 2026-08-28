@@ -44,6 +44,7 @@ const schema = z.object({
   QUEUE_MAX_INFLIGHT: z.coerce.number().int().min(1).max(100).default(20),
   MESSAGE_RECONCILIATION_GRACE_MS: z.coerce.number().int().positive().default(90000),
   MESSAGE_RECONCILIATION_INTERVAL_MS: z.coerce.number().int().positive().default(15000),
+  RECURRING_CAMPAIGN_CHECK_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
   SEND_DELAY_MIN_MS: z.coerce.number().int().nonnegative().default(2500),
   SEND_DELAY_MAX_MS: z.coerce.number().int().nonnegative().default(5000),
   CIRCUIT_BREAKER_FAILURE_THRESHOLD: z.coerce.number().int().min(2).max(20).default(3),

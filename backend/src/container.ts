@@ -39,6 +39,8 @@ import { PrismaOutboxRepository } from "./infrastructure/repositories/prisma-out
 import { PrismaWorkerNodeRepository } from "./infrastructure/repositories/prisma-worker-node.repository.js";
 import { PrismaIntegrationRepository } from "./infrastructure/repositories/prisma-integration.repository.js";
 import { PrismaExternalConnectorRepository } from "./infrastructure/repositories/prisma-external-connector.repository.js";
+import { PrismaRecurringCampaignRepository } from "./infrastructure/repositories/prisma-recurring-campaign.repository.js";
+import { RecurringCampaignService } from "./application/services/recurring-campaign.service.js";
 import { TenantCapacityService } from "./application/services/tenant-capacity.service.js";
 import { MemoryCoordinationBus } from "./infrastructure/coordination/memory-coordination-bus.js";
 import { RedisCoordinationBus } from "./infrastructure/coordination/redis-coordination-bus.js";
@@ -83,6 +85,7 @@ export function buildContainer() {
   const databaseProbe = new PrismaDatabaseProbe(prisma);
   const integrations = new PrismaIntegrationRepository(prisma);
   const externalConnectors = new PrismaExternalConnectorRepository(prisma);
+  const recurringCampaigns = new PrismaRecurringCampaignRepository(prisma);
   const storage = env.OBJECT_STORAGE_MODE === "MOCK"
     ? new MockObjectStorage()
     : new S3ObjectStorage(env.S3_BUCKET, {
@@ -140,6 +143,14 @@ export function buildContainer() {
     externalConnectors,
     cryptoBox,
     env.NODE_ENV !== "production",
+  );
+  const recurringCampaignService = new RecurringCampaignService(
+    recurringCampaigns,
+    externalConnectors,
+    externalConnectorService,
+    campaignService,
+    messageQueue,
+    phoneNormalizer,
   );
   const inboundService = new InboundMessageService(
     conversations,
@@ -209,6 +220,7 @@ export function buildContainer() {
       workerNodes,
       integrations,
       externalConnectors,
+      recurringCampaigns,
     },
     services: {
       authService,
@@ -225,6 +237,7 @@ export function buildContainer() {
       integrationValidationService,
       integrationManagementService,
       externalConnectorService,
+      recurringCampaignService,
     },
     whatsapp: { sockets, sessionGateway, messagePersistence },
     scaling: { coordination, eventTransport },

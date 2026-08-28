@@ -44,6 +44,27 @@ export interface CampaignRecord {
 }
 
 
+export interface RecurringCampaignRecord {
+  id: string;
+  name: string;
+  connectorId: string;
+  connectorVariables: Record<string, string>;
+  sessionIds: string[];
+  message: { text: string; caption?: string };
+  mediaAssetId?: string;
+  defaultRegion: string;
+  intervalMinutes: number;
+  status: "ACTIVE" | "PAUSED";
+  lastRunAt?: string;
+  lastRunOutcome?: "CREATED" | "EMPTY" | "ERROR";
+  lastRunContactsFound?: number;
+  lastRunContactsNew?: number;
+  lastRunError?: string;
+  lastCampaignId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CampaignMessageRecord {
   id: string;
   campaignId: string;
@@ -607,6 +628,23 @@ export class ApiService {
   requeueDeadLetter(campaignId: string, deadLetterId: string) {
     return this.http.post<void>(`/api/campaigns/${campaignId}/dead-letters/${deadLetterId}/requeue`, {});
   }
+
+  recurringCampaigns() { return this.http.get<RecurringCampaignRecord[]>("/api/recurring-campaigns"); }
+  createRecurringCampaign(body: {
+    name: string;
+    connectorId: string;
+    connectorVariables: Record<string, string>;
+    sessionIds: string[];
+    message: { text: string; caption?: string };
+    mediaAssetId?: string;
+    defaultRegion?: string;
+    intervalMinutes: number;
+  }) {
+    return this.http.post<RecurringCampaignRecord>("/api/recurring-campaigns", body);
+  }
+  pauseRecurringCampaign(id: string) { return this.http.post<void>(`/api/recurring-campaigns/${id}/pause`, {}); }
+  resumeRecurringCampaign(id: string) { return this.http.post<void>(`/api/recurring-campaigns/${id}/resume`, {}); }
+  deleteRecurringCampaign(id: string) { return this.http.delete<void>(`/api/recurring-campaigns/${id}`); }
 
   media() { return this.http.get<MediaRecord[]>("/api/media"); }
 

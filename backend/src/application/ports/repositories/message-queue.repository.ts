@@ -132,4 +132,11 @@ export interface IMessageQueueRepository {
     replacementSessionId: string;
   }): Promise<number>;
   releaseWithoutReplacement(sessionId: string, retryAt: Date): Promise<number>;
+  /**
+   * Números (E.164) que ya tienen al menos un registro en la cola de este
+   * tenant, en cualquier estado (pendiente, enviado, fallido, etc). Se usa
+   * para que las campañas recurrentes no vuelvan a encolar a alguien que el
+   * sistema ya intentó contactar alguna vez.
+   */
+  findExistingRecipients(tenantId: string, recipientsE164: string[]): Promise<Set<string>>;
 }

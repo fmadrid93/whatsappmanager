@@ -31,6 +31,17 @@ const campaignCreateSchema = z.object({
   defaultRegion: z.string().length(2).optional(),
 });
 
+const recurringCampaignCreateSchema = z.object({
+  name: z.string().min(2).max(150),
+  connectorId: z.string().uuid(),
+  connectorVariables: z.record(z.string(), z.string().max(2000)).default({}),
+  sessionIds: z.array(z.string().uuid()).min(1),
+  message: z.object({ text: z.string().max(4096), caption: z.string().max(1024).optional() }),
+  mediaAssetId: z.string().uuid().optional(),
+  defaultRegion: z.string().length(2).optional(),
+  intervalMinutes: z.coerce.number().int().min(5).max(10080),
+});
+
 const botFlowStepSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string().default(() => crypto.randomUUID()), type: z.literal("MESSAGE"), text: z.string().min(1).max(4096) }),
   z.object({ id: z.string().default(() => crypto.randomUUID()), type: z.literal("QUESTION"), text: z.string().min(1).max(4096), variable: z.string().min(1).max(50) }),
@@ -1616,6 +1627,68 @@ export function createRoutes(container: AppContainer): Router {
       const id = requireRouteParam(request, "id");
       await audit(request, "CAMPAIGN_CANCELLED", "Campaign", id);
       await container.services.integrationManagementService.emit({ tenantId: request.auth!.tenantId, eventType: "CAMPAIGN_CANCELLED", aggregateType: "Campaign", aggregateId: id, payload: { campaignId: id } });
+      response.status(204).send();
+    }),
+  );
+
+  router.get(
+    "/recurring-campaigns",
+    auth,
+    requirePermission(permissions.CAMPAIGN_VIEW),
+    asyncHandler(async (request, response) => {
+      response.json(await container.services.recurringCampaignService.list(request.auth!.tenantId));
+    }),
+  );
+
+  router.post(
+    "/recurring-campaigns",
+    auth,
+    requirePermission(permissions.CAMPAIGN_MANAGE),
+    asyncHandler(async (request, response) => {
+      const parsed = recurringCampaignCreateSchema.parse(request.body);
+      const created = await container.services.recurringCampaignService.create({
+        tenantId: request.auth!.tenantId,
+        createdByUserId: request.auth!.userId,
+        ...parsed,
+        defaultRegion: parsed.defaultRegion ?? container.env.DEFAULT_COUNTRY_REGION,
+      });
+      await audit(request, "RECURRING_CAMPAIGN_CREATED", "RecurringCampaign", created.id, { name: created.name });
+      response.status(201).json(created);
+    }),
+  );
+
+  router.post(
+    "/recurring-campaigns/:id/pause",
+    auth,
+    requirePermission(permissions.CAMPAIGN_MANAGE),
+    asyncHandler(async (request, response) => {
+      const id = requireRouteParam(request, "id");
+      await container.services.recurringCampaignService.pause(request.auth!.tenantId, id);
+      await audit(request, "RECURRING_CAMPAIGN_PAUSED", "RecurringCampaign", id);
+      response.status(204).send();
+    }),
+  );
+
+  router.post(
+    "/recurring-campaigns/:id/resume",
+    auth,
+    requirePermission(permissions.CAMPAIGN_MANAGE),
+    asyncHandler(async (request, response) => {
+      const id = requireRouteParam(request, "id");
+      await container.services.recurringCampaignService.resume(request.auth!.tenantId, id);
+      await audit(request, "RECURRING_CAMPAIGN_RESUMED", "RecurringCampaign", id);
+      response.status(204).send();
+    }),
+  );
+
+  router.delete(
+    "/recurring-campaigns/:id",
+    auth,
+    requirePermission(permissions.CAMPAIGN_MANAGE),
+    asyncHandler(async (request, response) => {
+      const id = requireRouteParam(request, "id");
+      await container.services.recurringCampaignService.remove(request.auth!.tenantId, id);
+      await audit(request, "RECURRING_CAMPAIGN_DELETED", "RecurringCampaign", id);
       response.status(204).send();
     }),
   );
