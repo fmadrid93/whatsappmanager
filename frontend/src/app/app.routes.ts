@@ -17,7 +17,7 @@ export const routes: Routes = [
   { path: "sessions", component: SessionsComponent, canActivate: [authGuard] },
   { path: "campaigns", component: CampaignsComponent, canActivate: [authGuard] },
   { path: "recurring-campaigns", component: RecurringCampaignsComponent, canActivate: [authGuard] },
-  { path: "campaigns-jerarquico", component: CampaignsJerarquicoComponent, canActivate: [authGuard] },
+  { path: "envios-jerarquia", component: CampaignsJerarquicoComponent, canActivate: [authGuard] },
   { path: "flows", component: FlowsComponent, canActivate: [authGuard] },
   { path: "conversations", component: ConversationsComponent, canActivate: [authGuard] },
   { path: "audit", component: AuditComponent, canActivate: [authGuard] },

@@ -18,7 +18,7 @@ import { AuthService } from "./core/auth.service";
           <a routerLink="/sessions" routerLinkActive="active">Sesiones</a>
           <a routerLink="/campaigns" routerLinkActive="active">Campañas</a>
           <a routerLink="/recurring-campaigns" routerLinkActive="active">Envíos recurrentes</a>
-          <a routerLink="/campaigns-jerarquico" routerLinkActive="active">Envíos por jerarquía</a>
+          <a routerLink="/envios-jerarquia" routerLinkActive="active">Envíos por jerarquía</a>
           <a routerLink="/flows" routerLinkActive="active">Bot Manager</a>
           <a routerLink="/conversations" routerLinkActive="active">Conversaciones</a>
           @if (auth.canViewAudit()) { <a routerLink="/audit" routerLinkActive="active">Auditoría</a> }
