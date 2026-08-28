@@ -65,6 +65,38 @@ export interface RecurringCampaignRecord {
   updatedAt: string;
 }
 
+export interface Voto1x10Territorio {
+  idTerritorio: number;
+  idTerritorioPadre?: number;
+  nombrePadre?: string;
+  nombre: string;
+  tipoTerritorio: string;
+}
+
+export interface Voto1x10Usuario {
+  idUsuario: number;
+  idRol: number;
+  rol: string;
+  idTerritorio?: number;
+  territorio?: string;
+  idUsuarioSupervisor?: number;
+  nombreCompleto: string;
+  totalPersonas: number;
+}
+
+export interface Voto1x10Jerarquia {
+  territorios: Voto1x10Territorio[];
+  administradores: Voto1x10Usuario[];
+  gerentes: Voto1x10Usuario[];
+  movilizadores: Voto1x10Usuario[];
+}
+
+export interface Voto1x10ContactosResult {
+  contacts: Array<{ name?: string; phone: string }>;
+  movilizadorCount: number;
+  personaCount: number;
+}
+
 export interface CampaignMessageRecord {
   id: string;
   campaignId: string;
@@ -645,6 +677,16 @@ export class ApiService {
   pauseRecurringCampaign(id: string) { return this.http.post<void>(`/api/recurring-campaigns/${id}/pause`, {}); }
   resumeRecurringCampaign(id: string) { return this.http.post<void>(`/api/recurring-campaigns/${id}/resume`, {}); }
   deleteRecurringCampaign(id: string) { return this.http.delete<void>(`/api/recurring-campaigns/${id}`); }
+
+  voto1x10Jerarquia() { return this.http.get<Voto1x10Jerarquia>("/api/voto1x10/jerarquia"); }
+  voto1x10Contactos(seleccion: {
+    territorioIds: number[];
+    administradorIds: number[];
+    gerenteIds: number[];
+    movilizadorIds: number[];
+  }) {
+    return this.http.post<Voto1x10ContactosResult>("/api/voto1x10/contactos", seleccion);
+  }
 
   media() { return this.http.get<MediaRecord[]>("/api/media"); }
 

@@ -41,6 +41,8 @@ import { PrismaIntegrationRepository } from "./infrastructure/repositories/prism
 import { PrismaExternalConnectorRepository } from "./infrastructure/repositories/prisma-external-connector.repository.js";
 import { PrismaRecurringCampaignRepository } from "./infrastructure/repositories/prisma-recurring-campaign.repository.js";
 import { RecurringCampaignService } from "./application/services/recurring-campaign.service.js";
+import { Voto1x10Client } from "./infrastructure/voto1x10/voto1x10-client.js";
+import { Voto1x10HierarchyService } from "./application/services/voto1x10-hierarchy.service.js";
 import { TenantCapacityService } from "./application/services/tenant-capacity.service.js";
 import { MemoryCoordinationBus } from "./infrastructure/coordination/memory-coordination-bus.js";
 import { RedisCoordinationBus } from "./infrastructure/coordination/redis-coordination-bus.js";
@@ -152,6 +154,11 @@ export function buildContainer() {
     messageQueue,
     phoneNormalizer,
   );
+  const voto1x10HierarchyService = env.VOTO1X10_API_BASE_URL && env.VOTO1X10_SERVICE_USERNAME && env.VOTO1X10_SERVICE_PASSWORD
+    ? new Voto1x10HierarchyService(
+        new Voto1x10Client(env.VOTO1X10_API_BASE_URL, env.VOTO1X10_SERVICE_USERNAME, env.VOTO1X10_SERVICE_PASSWORD),
+      )
+    : null;
   const inboundService = new InboundMessageService(
     conversations,
     sessions,
@@ -238,6 +245,7 @@ export function buildContainer() {
       integrationManagementService,
       externalConnectorService,
       recurringCampaignService,
+      voto1x10HierarchyService,
     },
     whatsapp: { sockets, sessionGateway, messagePersistence },
     scaling: { coordination, eventTransport },

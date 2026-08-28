@@ -33,6 +33,13 @@ const schema = z.object({
   ENCRYPTION_KEY_BASE64: z.string().min(1),
   INTEGRATION_API_KEY: z.string().min(24).optional(),
   INTEGRATION_ADMIN_EMAIL: z.string().email().default("admin@demo.local"),
+  // Integración de solo lectura con el ecosistema 1x10 (API .NET Core) para
+  // traer la jerarquía Territorio/Administrador/Gerente/Movilizador y sus
+  // votantes. Se loguea como un usuario de servicio ya existente en ese
+  // sistema; si no se configura, las rutas /voto1x10/* quedan deshabilitadas.
+  VOTO1X10_API_BASE_URL: optionalUrl,
+  VOTO1X10_SERVICE_USERNAME: z.string().optional(),
+  VOTO1X10_SERVICE_PASSWORD: z.string().optional(),
   WORKER_ID: z.string().default("windows-worker-1"),
   WHATSAPP_GATEWAY_MODE: z.enum(["BAILEYS", "MOCK"]).default("BAILEYS"),
   OBJECT_STORAGE_MODE: z.enum(["S3", "MOCK"]).default("S3"),

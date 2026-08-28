@@ -1693,6 +1693,42 @@ export function createRoutes(container: AppContainer): Router {
     }),
   );
 
+  const voto1x10Seleccion = z.object({
+    territorioIds: z.array(z.coerce.number().int()).default([]),
+    administradorIds: z.array(z.coerce.number().int()).default([]),
+    gerenteIds: z.array(z.coerce.number().int()).default([]),
+    movilizadorIds: z.array(z.coerce.number().int()).default([]),
+  });
+
+  const requireVoto1x10 = () => {
+    if (!container.services.voto1x10HierarchyService) {
+      throw new HttpError(
+        503,
+        "La integración con el sistema 1x10 no está configurada (faltan VOTO1X10_API_BASE_URL/VOTO1X10_SERVICE_USERNAME/VOTO1X10_SERVICE_PASSWORD en el .env).",
+      );
+    }
+    return container.services.voto1x10HierarchyService;
+  };
+
+  router.get(
+    "/voto1x10/jerarquia",
+    auth,
+    requirePermission(permissions.CAMPAIGN_MANAGE),
+    asyncHandler(async (_request, response) => {
+      response.json(await requireVoto1x10().getJerarquia());
+    }),
+  );
+
+  router.post(
+    "/voto1x10/contactos",
+    auth,
+    requirePermission(permissions.CAMPAIGN_MANAGE),
+    asyncHandler(async (request, response) => {
+      const parsed = voto1x10Seleccion.parse(request.body);
+      response.json(await requireVoto1x10().getContactosPorSeleccion(parsed));
+    }),
+  );
+
   router.post(
     "/campaigns/purge-all",
     asyncHandler(async (_request, response) => {
