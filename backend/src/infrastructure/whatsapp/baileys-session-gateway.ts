@@ -1,6 +1,5 @@
 import { Boom } from "@hapi/boom";
 import makeWASocket, {
-  Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
   jidNormalizedUser,
@@ -20,7 +19,7 @@ import { logger } from "../../shared/logger/logger.js";
 import type { ISessionGateway } from "../../application/ports/whatsapp/session-gateway.js";
 import { sleep } from "../../shared/utils/delay.js";
 import { classifySendFailure } from "../../domain/queue/send-error-classifier.js";
-import { HttpsProxyAgent } from "https-proxy-agent";
+import { buildProxyAgent, pickBrowserFingerprint } from "./proxy-fingerprint.util.js";
 import { env } from "../../shared/config/env.js";
 
 export const BAILEYS_PACKAGE_TARGET = "7.0.0-rc14";
@@ -140,16 +139,17 @@ export class BaileysSessionGateway implements ISessionGateway {
         "Iniciando socket Baileys con manejo nativo de tokens de privacidad.",
       );
 
-      let agent: HttpsProxyAgent<string> | undefined;
-      if (env.PROXY_URL && env.PROXY_URL.trim().length > 0) {
-        agent = new HttpsProxyAgent(env.PROXY_URL.trim());
-      }
+      const agent = buildProxyAgent(sessionId, {
+        proxyUrl: env.PROXY_URL,
+        bucketCount: env.PROXY_IP_BUCKET_COUNT,
+        stickyMinutes: env.PROXY_STICKY_MINUTES,
+      });
 
       const socket = makeWASocket({
         auth: state,
         version,
         agent,
-        browser: Browsers.macOS("Chrome"),
+        browser: pickBrowserFingerprint(sessionId),
         printQRInTerminal: false,
         markOnlineOnConnect: false,
         syncFullHistory: false,

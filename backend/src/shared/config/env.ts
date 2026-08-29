@@ -93,6 +93,18 @@ const schema = z.object({
   DEFAULT_MAX_PENDING_MESSAGES: z.coerce.number().int().positive().default(100000),
   DEFAULT_MONTHLY_MESSAGE_LIMIT: z.coerce.number().int().positive().default(1000000),
   PROXY_URL: z.string().optional(),
+  /**
+   * Cuántas "IPs virtuales" repartir entre las sesiones de WhatsApp de este
+   * servidor, agrupando varias sesiones por IP residencial en vez de pedir
+   * una IP distinta por cada una (a gran escala el pool de IPs residenciales
+   * del proveedor no da abasto 1 a 1). Sin configurar, no se agrupa nada y
+   * PROXY_URL se usa tal cual (comportamiento anterior). Ajustar por
+   * servidor según su cantidad de sesiones: ej. 2000 sesiones / 300 buckets
+   * ≈ 6-7 sesiones por IP.
+   */
+  PROXY_IP_BUCKET_COUNT: z.coerce.number().int().positive().optional(),
+  /** Minutos de "sticky session" a pedirle al proveedor de proxy por IP asignada (formato Decodo: -sessionduration-N). */
+  PROXY_STICKY_MINUTES: z.coerce.number().int().positive().default(30),
 });
 
 const parsed = schema.parse(process.env);
