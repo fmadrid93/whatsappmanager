@@ -3,6 +3,7 @@ import { FormsModule } from "@angular/forms";
 import { ButtonModule } from "primeng/button";
 import { CardModule } from "primeng/card";
 import { InputTextModule } from "primeng/inputtext";
+import { MultiSelectModule } from "primeng/multiselect";
 import { MessageService } from "primeng/api";
 import {
   ApiService,
@@ -24,7 +25,7 @@ import {
  */
 @Component({
   standalone: true,
-  imports: [FormsModule, ButtonModule, CardModule, InputTextModule],
+  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, MultiSelectModule],
   template: `
     <main class="page">
       <div class="page-header">
@@ -41,62 +42,85 @@ import {
           } @else if (!jerarquia()) {
             <div class="error">No se pudo cargar la estructura de 1x10. Reintentá más tarde.</div>
           } @else {
-            <div class="hierarchy-columns">
-              <div class="hierarchy-col">
-                <strong>Territorio ({{ jerarquia()!.territorios.length }})</strong>
-                <div class="option-list">
-                  @for (item of jerarquia()!.territorios; track item.idTerritorio) {
-                    <label class="check-row">
-                      <input type="checkbox" [checked]="territorioIds().includes(item.idTerritorio)" (change)="toggle(territorioIds, item.idTerritorio)" />
-                      {{ item.nombre }} <small>({{ item.tipoTerritorio }})</small>
-                    </label>
-                  } @empty {
-                    <div class="muted small">Sin territorios.</div>
-                  }
-                </div>
+            <div class="hierarchy-filters">
+              <div class="filter-field">
+                <label>Territorio <span class="muted small">({{ jerarquia()!.territorios.length }})</span></label>
+                <p-multiSelect
+                  [options]="territorioOptions()"
+                  optionLabel="label"
+                  optionValue="id"
+                  [ngModel]="territorioIds()"
+                  (ngModelChange)="onSelectionChange('territorio', $event)"
+                  filter="true"
+                  filterPlaceHolder="Buscar territorio..."
+                  display="chip"
+                  [maxSelectedLabels]="2"
+                  selectedItemsLabel="{0} territorios elegidos"
+                  placeholder="Todos (sin filtrar)"
+                  [showClear]="true"
+                  styleClass="w-full"
+                />
               </div>
 
-              <div class="hierarchy-col">
-                <strong>Administrador ({{ jerarquia()!.administradores.length }})</strong>
-                <div class="option-list">
-                  @for (item of jerarquia()!.administradores; track item.idUsuario) {
-                    <label class="check-row">
-                      <input type="checkbox" [checked]="administradorIds().includes(item.idUsuario)" (change)="toggle(administradorIds, item.idUsuario)" />
-                      {{ item.nombreCompleto }} <small>{{ item.territorio || '' }}</small>
-                    </label>
-                  } @empty {
-                    <div class="muted small">Sin administradores.</div>
-                  }
-                </div>
+              <div class="filter-field">
+                <label>Administrador <span class="muted small">({{ jerarquia()!.administradores.length }})</span></label>
+                <p-multiSelect
+                  [options]="administradorOptions()"
+                  optionLabel="label"
+                  optionValue="id"
+                  [ngModel]="administradorIds()"
+                  (ngModelChange)="onSelectionChange('administrador', $event)"
+                  filter="true"
+                  filterPlaceHolder="Buscar administrador..."
+                  display="chip"
+                  [maxSelectedLabels]="2"
+                  selectedItemsLabel="{0} administradores elegidos"
+                  placeholder="Todos (sin filtrar)"
+                  [showClear]="true"
+                  styleClass="w-full"
+                />
               </div>
 
-              <div class="hierarchy-col">
-                <strong>Gerente ({{ gerentesVisibles().length }})</strong>
-                <div class="option-list">
-                  @for (item of gerentesVisibles(); track item.idUsuario) {
-                    <label class="check-row">
-                      <input type="checkbox" [checked]="gerenteIds().includes(item.idUsuario)" (change)="toggle(gerenteIds, item.idUsuario)" />
-                      {{ item.nombreCompleto }}
-                    </label>
-                  } @empty {
-                    <div class="muted small">Sin gerentes.</div>
-                  }
-                </div>
+              <div class="filter-field">
+                <label>
+                  Gerente <span class="muted small">({{ gerenteOptions().length }}{{ administradorIds().length ? ' de sus administradores' : '' }})</span>
+                </label>
+                <p-multiSelect
+                  [options]="gerenteOptions()"
+                  optionLabel="label"
+                  optionValue="id"
+                  [ngModel]="gerenteIds()"
+                  (ngModelChange)="onSelectionChange('gerente', $event)"
+                  filter="true"
+                  filterPlaceHolder="Buscar gerente..."
+                  display="chip"
+                  [maxSelectedLabels]="2"
+                  selectedItemsLabel="{0} gerentes elegidos"
+                  placeholder="Todos (sin filtrar)"
+                  [showClear]="true"
+                  styleClass="w-full"
+                />
               </div>
 
-              <div class="hierarchy-col">
-                <strong>Movilizador ({{ movilizadoresVisibles().length }})</strong>
-                <input pInputText class="mov-search" placeholder="Buscar movilizador..." [(ngModel)]="filtroMovilizador" name="filtroMovilizador" />
-                <div class="option-list">
-                  @for (item of movilizadoresVisibles(); track item.idUsuario) {
-                    <label class="check-row">
-                      <input type="checkbox" [checked]="movilizadorIds().includes(item.idUsuario)" (change)="toggle(movilizadorIds, item.idUsuario)" />
-                      {{ item.nombreCompleto }} <small>({{ item.totalPersonas }} personas)</small>
-                    </label>
-                  } @empty {
-                    <div class="muted small">Sin movilizadores.</div>
-                  }
-                </div>
+              <div class="filter-field">
+                <label>
+                  Movilizador <span class="muted small">({{ movilizadorOptions().length }}{{ (gerenteIds().length || territorioIds().length) ? ' de lo elegido arriba' : '' }})</span>
+                </label>
+                <p-multiSelect
+                  [options]="movilizadorOptions()"
+                  optionLabel="label"
+                  optionValue="id"
+                  [ngModel]="movilizadorIds()"
+                  (ngModelChange)="onSelectionChange('movilizador', $event)"
+                  filter="true"
+                  filterPlaceHolder="Buscar movilizador..."
+                  display="chip"
+                  [maxSelectedLabels]="2"
+                  selectedItemsLabel="{0} movilizadores elegidos"
+                  placeholder="Todos (sin filtrar)"
+                  [showClear]="true"
+                  styleClass="w-full"
+                />
               </div>
             </div>
 
@@ -164,6 +188,24 @@ import {
                 <div><strong>{{ validacion.invalid }}</strong><span>inválidos</span></div>
                 <div><strong>{{ validacion.sendable }}</strong><span>a enviar</span></div>
               </div>
+
+              @if (validacion.invalid > 0) {
+                <div class="rejected-box">
+                  <div class="rejected-header">
+                    <i class="pi pi-exclamation-triangle"></i>
+                    {{ validacion.invalid }} número(s) rechazado(s) — revisá si son de otro país que "{{ regionLabelActual() }}"
+                  </div>
+                  <div class="rejected-list">
+                    @for (item of validacion.rejected; track item.sourceIndex) {
+                      <div class="rejected-row">
+                        <span class="rejected-phone">{{ item.phone }}</span>
+                        <span class="rejected-name">{{ item.name || 'Sin nombre' }}</span>
+                        <span class="rejected-reason">{{ item.reason }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
             }
 
             <label class="check-row">
@@ -187,13 +229,12 @@ import {
   `,
   styles: [`
     .top-grid{align-items:start}
-    .hierarchy-columns{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem}
-    .hierarchy-col{display:flex;flex-direction:column;gap:.4rem;min-width:0}
-    .hierarchy-col strong{font-size:.85rem}
-    .option-list{display:flex;flex-direction:column;gap:.3rem;max-height:220px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:.5rem;background:#f8fafc}
+    .hierarchy-filters{display:flex;flex-direction:column;gap:.9rem}
+    .filter-field{display:flex;flex-direction:column;gap:.35rem}
+    .filter-field label{font-size:.85rem;font-weight:600;color:#334155}
+    .filter-field p-multiselect{display:block;width:100%}
     .check-row{display:flex;align-items:center;gap:.4rem;font-size:.82rem;font-weight:400}
     .small{font-size:.75rem}
-    .mov-search{margin-bottom:.1rem}
     .selection-actions{margin-top:.9rem;flex-wrap:wrap}
     .contactos-summary{display:grid;grid-template-columns:repeat(3,minmax(100px,1fr));gap:.5rem;margin-top:.9rem}
     .contactos-summary>div{display:grid;gap:.1rem;border:1px solid #e2e8f0;border-radius:9px;padding:.6rem;background:#f8fafc;text-align:center}
@@ -205,6 +246,14 @@ import {
     .validation-summary strong{font-size:1rem}
     .created-box{margin-top:1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;padding:.7rem .9rem;font-size:.85rem}
     .created-box i{color:#16a34a}
+    .rejected-box{border:1px solid #fecaca;background:#fef2f2;border-radius:10px;padding:.6rem .8rem;display:flex;flex-direction:column;gap:.4rem}
+    .rejected-header{display:flex;align-items:center;gap:.4rem;font-size:.82rem;font-weight:600;color:#b91c1c}
+    .rejected-list{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:.3rem}
+    .rejected-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(90px,1fr) minmax(120px,1fr);gap:.5rem;font-size:.78rem;border-bottom:1px dashed #fecaca;padding-bottom:.3rem}
+    .rejected-phone{font-weight:600;color:#991b1b}
+    .rejected-name{color:#7f1d1d}
+    .rejected-reason{color:#b45309}
+    @media(max-width:640px){.rejected-row{grid-template-columns:1fr}}
     @media(max-width:1100px){.hierarchy-columns{grid-template-columns:repeat(2,1fr)}}
     @media(max-width:1000px){.top-grid{grid-template-columns:1fr}}
     @media(max-width:640px){.hierarchy-columns{grid-template-columns:1fr}}
@@ -221,12 +270,31 @@ export class CampaignsJerarquicoComponent implements OnInit {
   readonly administradorIds = signal<number[]>([]);
   readonly gerenteIds = signal<number[]>([]);
   readonly movilizadorIds = signal<number[]>([]);
-  filtroMovilizador = "";
 
   readonly totalSeleccionados = computed(() =>
     this.territorioIds().length + this.administradorIds().length + this.gerenteIds().length + this.movilizadorIds().length);
 
-  readonly gerentesVisibles = computed<Voto1x10Usuario[]>(() => {
+  readonly territorioOptions = computed<{ id: number; label: string }[]>(() =>
+    (this.jerarquia()?.territorios ?? []).map((t) => ({
+      id: t.idTerritorio,
+      label: `${t.nombre} (${t.tipoTerritorio})`,
+    })));
+
+  private readonly administradoresVisibles = computed<Voto1x10Usuario[]>(() => {
+    const data = this.jerarquia();
+    if (!data) return [];
+    const territorios = this.territorioIds();
+    if (territorios.length === 0) return data.administradores;
+    return data.administradores.filter((a) => a.idTerritorio !== undefined && territorios.includes(a.idTerritorio));
+  });
+
+  readonly administradorOptions = computed<{ id: number; label: string }[]>(() =>
+    this.administradoresVisibles().map((a) => ({
+      id: a.idUsuario,
+      label: a.territorio ? `${a.nombreCompleto} — ${a.territorio}` : a.nombreCompleto,
+    })));
+
+  private readonly gerentesVisibles = computed<Voto1x10Usuario[]>(() => {
     const data = this.jerarquia();
     if (!data) return [];
     const admins = this.administradorIds();
@@ -234,21 +302,22 @@ export class CampaignsJerarquicoComponent implements OnInit {
     return data.gerentes.filter((g) => g.idUsuarioSupervisor !== undefined && admins.includes(g.idUsuarioSupervisor));
   });
 
-  readonly movilizadoresVisibles = computed<Voto1x10Usuario[]>(() => {
+  readonly gerenteOptions = computed<{ id: number; label: string }[]>(() =>
+    this.gerentesVisibles().map((g) => ({ id: g.idUsuario, label: g.nombreCompleto })));
+
+  private readonly movilizadoresVisibles = computed<Voto1x10Usuario[]>(() => {
     const data = this.jerarquia();
     if (!data) return [];
     const gerentes = this.gerenteIds();
     const territorios = this.territorioIds();
-    let base = data.movilizadores;
-    if (gerentes.length > 0 || territorios.length > 0) {
-      base = base.filter((m) =>
-        (m.idUsuarioSupervisor !== undefined && gerentes.includes(m.idUsuarioSupervisor)) ||
-        (m.idTerritorio !== undefined && territorios.includes(m.idTerritorio)));
-    }
-    const texto = this.filtroMovilizador.trim().toLowerCase();
-    if (!texto) return base;
-    return base.filter((m) => m.nombreCompleto.toLowerCase().includes(texto));
+    if (gerentes.length === 0 && territorios.length === 0) return data.movilizadores;
+    return data.movilizadores.filter((m) =>
+      (m.idUsuarioSupervisor !== undefined && gerentes.includes(m.idUsuarioSupervisor)) ||
+      (m.idTerritorio !== undefined && territorios.includes(m.idTerritorio)));
   });
+
+  readonly movilizadorOptions = computed<{ id: number; label: string }[]>(() =>
+    this.movilizadoresVisibles().map((m) => ({ id: m.idUsuario, label: `${m.nombreCompleto} (${m.totalPersonas} personas)` })));
 
   readonly loadingContactos = signal(false);
   readonly contactosResult = signal<Voto1x10ContactosResult | null>(null);
@@ -269,8 +338,8 @@ export class CampaignsJerarquicoComponent implements OnInit {
   messageText = "";
   consentConfirmed = false;
   readonly regionOptions = [
-    { code: "BO", label: "Bolivia (+591)" },
     { code: "PY", label: "Paraguay (+595)" },
+    { code: "BO", label: "Bolivia (+591)" },
     { code: "AR", label: "Argentina (+54)" },
     { code: "BR", label: "Brasil (+55)" },
     { code: "CL", label: "Chile (+56)" },
@@ -283,7 +352,11 @@ export class CampaignsJerarquicoComponent implements OnInit {
     { code: "US", label: "Estados Unidos / Canadá (+1)" },
     { code: "ES", label: "España (+34)" },
   ] as const;
-  defaultRegion = "BO";
+  defaultRegion = "PY";
+
+  regionLabelActual(): string {
+    return this.regionOptions.find((r) => r.code === this.defaultRegion)?.label ?? this.defaultRegion;
+  }
 
   ngOnInit(): void {
     this.loadJerarquia();
@@ -305,9 +378,13 @@ export class CampaignsJerarquicoComponent implements OnInit {
     });
   }
 
-  toggle(signalRef: ReturnType<typeof signal<number[]>>, id: number): void {
-    const current = signalRef();
-    signalRef.set(current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  onSelectionChange(nivel: "territorio" | "administrador" | "gerente" | "movilizador", ids: number[]): void {
+    const valores = ids ?? [];
+    if (nivel === "territorio") this.territorioIds.set(valores);
+    else if (nivel === "administrador") this.administradorIds.set(valores);
+    else if (nivel === "gerente") this.gerenteIds.set(valores);
+    else this.movilizadorIds.set(valores);
+
     this.contactosResult.set(null);
     this.validationResult.set(null);
   }
