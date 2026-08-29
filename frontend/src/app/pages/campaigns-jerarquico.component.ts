@@ -189,23 +189,62 @@ import {
                 <div><strong>{{ validacion.sendable }}</strong><span>a enviar</span></div>
               </div>
 
-              @if (validacion.invalid > 0) {
-                <div class="rejected-box">
-                  <div class="rejected-header">
-                    <i class="pi pi-exclamation-triangle"></i>
-                    {{ validacion.invalid }} número(s) rechazado(s) — revisá si son de otro país que "{{ regionLabelActual() }}"
+              <div class="lista-numeros">
+                <div class="lista-toolbar">
+                  <div class="lista-tabs">
+                    <button type="button" class="tab-btn" [class.active]="listaTab() === 'validos'" (click)="listaTab.set('validos')">Válidos ({{ validacion.valid }})</button>
+                    <button type="button" class="tab-btn" [class.active]="listaTab() === 'invalidos'" (click)="listaTab.set('invalidos')">Inválidos ({{ validacion.invalid }})</button>
+                    <button type="button" class="tab-btn" [class.active]="listaTab() === 'duplicados'" (click)="listaTab.set('duplicados')">Duplicados ({{ validacion.duplicates }})</button>
                   </div>
-                  <div class="rejected-list">
-                    @for (item of validacion.rejected; track item.sourceIndex) {
-                      <div class="rejected-row">
-                        <span class="rejected-phone">{{ item.phone }}</span>
-                        <span class="rejected-name">{{ item.name || 'Sin nombre' }}</span>
-                        <span class="rejected-reason">{{ item.reason }}</span>
+                  <input pInputText type="text" class="filtro-input" placeholder="Filtrar por nombre o número..." [(ngModel)]="filtroNumeros" name="filtroNumeros" [ngModelOptions]="{ standalone: true }" />
+                </div>
+
+                @if (listaTab() === 'invalidos' && validacion.invalid > 0) {
+                  <div class="lista-hint"><i class="pi pi-exclamation-triangle"></i> Revisá si son de otro país que "{{ regionLabelActual() }}".</div>
+                }
+
+                @if (listaTab() === 'validos') {
+                  <div class="numeros-list">
+                    @for (item of validosFiltrados(validacion); track item.sourceIndex) {
+                      <div class="numero-row ok">
+                        <span class="numero-e164">{{ item.e164 }}</span>
+                        <span class="numero-raw">{{ item.raw }}</span>
+                        <span class="numero-name">{{ item.name || 'Sin nombre' }}</span>
                       </div>
+                    } @empty {
+                      <div class="muted small">Sin resultados para ese filtro.</div>
                     }
                   </div>
-                </div>
-              }
+                }
+
+                @if (listaTab() === 'invalidos') {
+                  <div class="numeros-list">
+                    @for (item of invalidosFiltrados(validacion); track item.sourceIndex) {
+                      <div class="numero-row bad">
+                        <span class="numero-e164">{{ item.phone }}</span>
+                        <span class="numero-name">{{ item.name || 'Sin nombre' }}</span>
+                        <span class="numero-reason">{{ item.reason }}</span>
+                      </div>
+                    } @empty {
+                      <div class="muted small">Sin resultados para ese filtro.</div>
+                    }
+                  </div>
+                }
+
+                @if (listaTab() === 'duplicados') {
+                  <div class="numeros-list">
+                    @for (item of duplicadosFiltrados(validacion); track item.sourceIndex) {
+                      <div class="numero-row dup">
+                        <span class="numero-e164">{{ item.e164 }}</span>
+                        <span class="numero-raw">{{ item.phone }}</span>
+                        <span class="numero-name">{{ item.name || 'Sin nombre' }}</span>
+                      </div>
+                    } @empty {
+                      <div class="muted small">Sin resultados para ese filtro.</div>
+                    }
+                  </div>
+                }
+              </div>
             }
 
             <label class="check-row">
@@ -246,14 +285,22 @@ import {
     .validation-summary strong{font-size:1rem}
     .created-box{margin-top:1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;padding:.7rem .9rem;font-size:.85rem}
     .created-box i{color:#16a34a}
-    .rejected-box{border:1px solid #fecaca;background:#fef2f2;border-radius:10px;padding:.6rem .8rem;display:flex;flex-direction:column;gap:.4rem}
-    .rejected-header{display:flex;align-items:center;gap:.4rem;font-size:.82rem;font-weight:600;color:#b91c1c}
-    .rejected-list{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:.3rem}
-    .rejected-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(90px,1fr) minmax(120px,1fr);gap:.5rem;font-size:.78rem;border-bottom:1px dashed #fecaca;padding-bottom:.3rem}
-    .rejected-phone{font-weight:600;color:#991b1b}
-    .rejected-name{color:#7f1d1d}
-    .rejected-reason{color:#b45309}
-    @media(max-width:640px){.rejected-row{grid-template-columns:1fr}}
+    .lista-numeros{border:1px solid #e2e8f0;border-radius:10px;padding:.6rem .7rem;display:flex;flex-direction:column;gap:.5rem;background:#fff}
+    .lista-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem}
+    .lista-tabs{display:flex;gap:.35rem;flex-wrap:wrap}
+    .tab-btn{border:1px solid #e2e8f0;background:#f8fafc;border-radius:999px;padding:.3rem .7rem;font-size:.75rem;font-weight:600;color:#475569;cursor:pointer}
+    .tab-btn.active{background:#0f172a;border-color:#0f172a;color:#fff}
+    .filtro-input{flex:1;min-width:180px;max-width:280px}
+    .lista-hint{display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:#b45309}
+    .numeros-list{max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:.25rem}
+    .numero-row{display:grid;grid-template-columns:minmax(110px,auto) minmax(90px,1fr) minmax(110px,1fr);gap:.5rem;font-size:.78rem;border-bottom:1px dashed #e2e8f0;padding-bottom:.28rem;align-items:baseline}
+    .numero-row.ok .numero-e164{color:#15803d;font-weight:600}
+    .numero-row.bad .numero-e164{color:#991b1b;font-weight:600}
+    .numero-row.dup .numero-e164{color:#b45309;font-weight:600}
+    .numero-raw{color:#64748b}
+    .numero-name{color:#334155}
+    .numero-reason{color:#b45309}
+    @media(max-width:640px){.numero-row{grid-template-columns:1fr}}
     @media(max-width:1100px){.hierarchy-columns{grid-template-columns:repeat(2,1fr)}}
     @media(max-width:1000px){.top-grid{grid-template-columns:1fr}}
     @media(max-width:640px){.hierarchy-columns{grid-template-columns:1fr}}
@@ -330,6 +377,8 @@ export class CampaignsJerarquicoComponent implements OnInit {
 
   readonly validating = signal(false);
   readonly validationResult = signal<CampaignContactValidationResult | null>(null);
+  readonly listaTab = signal<"validos" | "invalidos" | "duplicados">("validos");
+  filtroNumeros = "";
   readonly saving = signal(false);
   readonly starting = signal(false);
   readonly ultimaCampaniaCreada = signal<{ id: string; name: string; totalMessages: number } | null>(null);
@@ -427,6 +476,8 @@ export class CampaignsJerarquicoComponent implements OnInit {
     const contacts = this.contactosResult()?.contacts ?? [];
     if (contacts.length === 0) return;
     this.validating.set(true);
+    this.filtroNumeros = "";
+    this.listaTab.set("validos");
     this.api.validateCampaignContacts({ contacts, defaultRegion: this.defaultRegion.toUpperCase() }).subscribe({
       next: (result) => { this.validating.set(false); this.validationResult.set(result); },
       error: (error: { error?: { message?: string } }) => {
@@ -434,6 +485,24 @@ export class CampaignsJerarquicoComponent implements OnInit {
         this.messages.add({ severity: "error", summary: "No se pudo validar", detail: error.error?.message });
       },
     });
+  }
+
+  private coincideFiltro(...campos: Array<string | undefined>): boolean {
+    const query = this.filtroNumeros.trim().toLowerCase();
+    if (!query) return true;
+    return campos.some((campo) => (campo ?? "").toLowerCase().includes(query));
+  }
+
+  validosFiltrados(validacion: CampaignContactValidationResult): CampaignContactValidationResult["normalizedPreview"] {
+    return validacion.normalizedPreview.filter((item) => this.coincideFiltro(item.name, item.raw, item.e164));
+  }
+
+  invalidosFiltrados(validacion: CampaignContactValidationResult): CampaignContactValidationResult["rejected"] {
+    return validacion.rejected.filter((item) => this.coincideFiltro(item.name, item.phone, item.reason));
+  }
+
+  duplicadosFiltrados(validacion: CampaignContactValidationResult): CampaignContactValidationResult["duplicatePreview"] {
+    return validacion.duplicatePreview.filter((item) => this.coincideFiltro(item.name, item.phone, item.e164));
   }
 
   crearCampania(): void {
