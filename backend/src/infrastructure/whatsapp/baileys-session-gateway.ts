@@ -142,7 +142,6 @@ export class BaileysSessionGateway implements ISessionGateway {
       const agent = buildProxyAgent(sessionId, {
         proxyUrl: env.PROXY_URL,
         bucketCount: env.PROXY_IP_BUCKET_COUNT,
-        stickyMinutes: env.PROXY_STICKY_MINUTES,
       });
 
       const socket = makeWASocket({

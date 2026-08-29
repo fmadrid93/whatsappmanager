@@ -25,14 +25,18 @@ export function hashToBucket(sessionId: string, bucketCount: number): number {
 
 /**
  * Arma el HttpsProxyAgent para una sesión. Si PROXY_IP_BUCKET_COUNT está
- * configurado, agrega el sufijo de sticky-session de Decodo
- * (`-session-<bucket>-sessionduration-<minutos>`) al usuario del proxy para
- * que ese bucket de sesiones comparta siempre la misma IP asignada. Sin
- * bucketCount configurado, usa PROXY_URL tal cual (sin pin de sesión).
+ * configurado, el bucket de la sesión se resuelve a un PUERTO distinto
+ * sobre el mismo host/usuario/clave (`PROXY_URL` base + N). Este es el
+ * mecanismo real de Decodo para IPs estáticas de ISP: cada puerto
+ * (10001, 10002, ...) es una IP fija distinta, confirmado directamente con
+ * su soporte — NO se arma agregando un sufijo al usuario (eso era para el
+ * producto Residencial rotativo, que además resultó no servir para
+ * conexiones persistentes). Sin bucketCount configurado, usa PROXY_URL tal
+ * cual (sin repartir por puerto).
  */
 export function buildProxyAgent(
   sessionId: string,
-  options: { proxyUrl?: string; bucketCount?: number; stickyMinutes: number },
+  options: { proxyUrl?: string; bucketCount?: number },
 ): HttpsProxyAgent<string> | undefined {
   const raw = options.proxyUrl?.trim();
   if (!raw) return undefined;
@@ -43,13 +47,14 @@ export function buildProxyAgent(
 
   try {
     const url = new URL(raw);
+    const basePort = Number(url.port);
+    if (!Number.isFinite(basePort) || basePort <= 0) return new HttpsProxyAgent(raw);
     const bucket = hashToBucket(sessionId, options.bucketCount);
-    const baseUser = decodeURIComponent(url.username);
-    url.username = encodeURIComponent(`${baseUser}-session-bucket${bucket}-sessionduration-${options.stickyMinutes}`);
+    url.port = String(basePort + bucket);
     return new HttpsProxyAgent(url.toString());
   } catch {
-    // PROXY_URL no tiene forma de URL estándar (usuario/clave embebidos de otra manera);
-    // se usa tal cual para no romper la conexión por un formato inesperado.
+    // PROXY_URL no tiene forma de URL estándar; se usa tal cual para no
+    // romper la conexión por un formato inesperado.
     return new HttpsProxyAgent(raw);
   }
 }
