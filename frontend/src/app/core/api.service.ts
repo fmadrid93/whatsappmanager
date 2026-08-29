@@ -106,6 +106,18 @@ export interface Voto1x10ContactosResult {
   personaCount: number;
 }
 
+export interface Voto1x10PersonaRepetida {
+  idPersonaMovilizada: number;
+  nombres: string;
+  apellidos: string;
+  celular: string;
+  idUsuarioMovilizador: number;
+  nombreMovilizador: string;
+  idTerritorio?: number;
+  nombreTerritorio?: string;
+  totalRepeticiones: number;
+}
+
 export interface CampaignMessageRecord {
   id: string;
   campaignId: string;
@@ -326,6 +338,7 @@ export interface BotFlowRecord {
   name: string;
   description?: string;
   isActive: boolean;
+  isTemplate: boolean;
   version: number;
   definition: {
     version: 2;
@@ -692,6 +705,13 @@ export class ApiService {
   voto1x10Contactos(seleccion: Voto1x10SeleccionInput) {
     return this.http.post<Voto1x10ContactosResult>("/api/voto1x10/contactos", seleccion);
   }
+  voto1x10CelularesRepetidos(params: { idTerritorio?: number; idUsuarioMovilizador?: number }) {
+    const query = new URLSearchParams();
+    if (params.idTerritorio !== undefined) query.set("idTerritorio", String(params.idTerritorio));
+    if (params.idUsuarioMovilizador !== undefined) query.set("idUsuarioMovilizador", String(params.idUsuarioMovilizador));
+    const suffix = query.toString();
+    return this.http.get<Voto1x10PersonaRepetida[]>(`/api/voto1x10/celulares-repetidos${suffix ? `?${suffix}` : ""}`);
+  }
 
   media() { return this.http.get<MediaRecord[]>("/api/media"); }
 
@@ -738,6 +758,10 @@ export class ApiService {
   flows() { return this.http.get<BotFlowRecord[]>("/api/flows"); }
   createFlow(body: unknown) { return this.http.post<BotFlowRecord>("/api/flows", body); }
   setFlowActive(id: string, active: boolean) { return this.http.patch<void>(`/api/flows/${id}/active`, { active }); }
+  setFlowTemplate(id: string, isTemplate: boolean) { return this.http.patch<void>(`/api/flows/${id}/template`, { isTemplate }); }
+  cloneFlow(id: string, body: { name: string; sessionIds: string[] }) {
+    return this.http.post<BotFlowRecord>(`/api/flows/${id}/clone`, body);
+  }
 
   conversations(filters: {
     search?: string;

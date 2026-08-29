@@ -107,10 +107,15 @@ export class BotFlowService {
     trigger: BotFlowTrigger;
     steps: BotFlowStep[];
     sessionIds: string[];
+    isTemplate?: boolean;
   }) {
     const name = input.name.trim();
     if (!name) throw new HttpError(400, "El nombre del flujo es obligatorio.");
-    if (input.sessionIds.length === 0) throw new HttpError(400, "Asigna al menos una sesión.");
+    // Una plantilla es solo la definición del flujo, todavía sin sesiones reales
+    // asignadas — recién se elige a qué sesión va cuando se clona.
+    if (!input.isTemplate && input.sessionIds.length === 0) {
+      throw new HttpError(400, "Asigna al menos una sesión.");
+    }
     if (input.steps.length === 0 || input.steps.length > 50) {
       throw new HttpError(400, "El flujo debe contener entre 1 y 50 pasos.");
     }
@@ -142,6 +147,7 @@ export class BotFlowService {
       description: input.description?.trim() || undefined,
       definition,
       sessionIds: input.sessionIds,
+      isTemplate: input.isTemplate ?? false,
     });
   }
 
@@ -151,5 +157,32 @@ export class BotFlowService {
 
   setActive(id: string, tenantId: string, active: boolean) {
     return this.flows.setActive(id, tenantId, active);
+  }
+
+  markAsTemplate(id: string, tenantId: string, isTemplate: boolean) {
+    return this.flows.setTemplate(id, tenantId, isTemplate);
+  }
+
+  async cloneFromTemplate(input: {
+    tenantId: string;
+    ownerUserId: string;
+    templateId: string;
+    name: string;
+    sessionIds: string[];
+  }) {
+    const template = await this.flows.findByIdForTenant(input.templateId, input.tenantId);
+    if (!template) throw new HttpError(404, "Plantilla no encontrada.");
+    if (!template.isTemplate) throw new HttpError(400, "Ese flujo no está marcado como plantilla.");
+
+    return this.create({
+      tenantId: input.tenantId,
+      ownerUserId: input.ownerUserId,
+      name: input.name,
+      description: template.description,
+      trigger: template.definition.trigger,
+      steps: template.definition.steps,
+      sessionIds: input.sessionIds,
+      isTemplate: false,
+    });
   }
 }

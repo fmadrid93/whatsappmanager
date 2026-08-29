@@ -1741,6 +1741,19 @@ export function createRoutes(container: AppContainer): Router {
     }),
   );
 
+  router.get(
+    "/voto1x10/celulares-repetidos",
+    auth,
+    requirePermission(permissions.CAMPAIGN_VIEW),
+    asyncHandler(async (request, response) => {
+      const query = z.object({
+        idTerritorio: z.coerce.number().int().optional(),
+        idUsuarioMovilizador: z.coerce.number().int().optional(),
+      }).parse(request.query);
+      response.json(await requireVoto1x10().celularesRepetidos(query));
+    }),
+  );
+
   router.post(
     "/campaigns/purge-all",
     asyncHandler(async (_request, response) => {
@@ -2045,7 +2058,8 @@ export function createRoutes(container: AppContainer): Router {
         description: z.string().max(1000).optional(),
         trigger: z.object({ type: z.enum(["ANY", "CONTAINS", "EXACT"]), value: z.string().max(1000).optional() }),
         steps: z.array(botFlowStepSchema).min(1).max(50),
-        sessionIds: z.array(z.string().uuid()).min(1),
+        sessionIds: z.array(z.string().uuid()).default([]),
+        isTemplate: z.boolean().optional(),
       }).parse(request.body);
       const created = await container.services.botFlowService.create({
         tenantId: request.auth!.tenantId,
@@ -2066,6 +2080,40 @@ export function createRoutes(container: AppContainer): Router {
       await container.services.botFlowService.setActive(requireRouteParam(request, "id"), request.auth!.tenantId, body.active);
       await audit(request, body.active ? "FLOW_ENABLED" : "FLOW_DISABLED", "BotFlow", requireRouteParam(request, "id"));
       response.status(204).send();
+    }),
+  );
+
+  router.patch(
+    "/flows/:id/template",
+    auth,
+    requirePermission(permissions.FLOW_MANAGE),
+    asyncHandler(async (request, response) => {
+      const body = z.object({ isTemplate: z.boolean() }).parse(request.body);
+      const id = requireRouteParam(request, "id");
+      await container.services.botFlowService.markAsTemplate(id, request.auth!.tenantId, body.isTemplate);
+      await audit(request, body.isTemplate ? "FLOW_MARKED_TEMPLATE" : "FLOW_UNMARKED_TEMPLATE", "BotFlow", id);
+      response.status(204).send();
+    }),
+  );
+
+  router.post(
+    "/flows/:id/clone",
+    auth,
+    requirePermission(permissions.FLOW_MANAGE),
+    asyncHandler(async (request, response) => {
+      const body = z.object({
+        name: z.string().min(2).max(150),
+        sessionIds: z.array(z.string().uuid()).min(1),
+      }).parse(request.body);
+      const created = await container.services.botFlowService.cloneFromTemplate({
+        tenantId: request.auth!.tenantId,
+        ownerUserId: request.auth!.userId,
+        templateId: requireRouteParam(request, "id"),
+        name: body.name,
+        sessionIds: body.sessionIds,
+      });
+      await audit(request, "FLOW_CLONED_FROM_TEMPLATE", "BotFlow", created.id, { templateId: requireRouteParam(request, "id") });
+      response.status(201).json(created);
     }),
   );
 

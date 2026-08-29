@@ -70,6 +70,7 @@ export interface BotFlowRecord {
   description?: string;
   version: number;
   isActive: boolean;
+  isTemplate: boolean;
   definition: BotFlowDefinition;
   sessionIds: string[];
   createdAt: Date;
@@ -83,9 +84,12 @@ export interface IBotFlowRepository {
     description?: string;
     definition: BotFlowDefinition;
     sessionIds: string[];
+    isTemplate?: boolean;
   }): Promise<BotFlowRecord>;
   listByTenant(tenantId: string): Promise<BotFlowRecord[]>;
+  findByIdForTenant(id: string, tenantId: string): Promise<BotFlowRecord | null>;
   setActive(id: string, tenantId: string, active: boolean): Promise<void>;
+  setTemplate(id: string, tenantId: string, isTemplate: boolean): Promise<void>;
   findActiveForSession(sessionId: string, inboundText?: string): Promise<BotFlowRecord | null>;
   findByIdForSession(id: string, sessionId: string): Promise<BotFlowRecord | null>;
 }

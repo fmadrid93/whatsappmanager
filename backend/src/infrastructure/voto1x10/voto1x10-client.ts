@@ -33,6 +33,18 @@ export interface Voto1x10Persona {
   idUsuarioMovilizador?: number;
 }
 
+export interface Voto1x10PersonaRepetida {
+  idPersonaMovilizada: number;
+  nombres: string;
+  apellidos: string;
+  celular: string;
+  idUsuarioMovilizador: number;
+  nombreMovilizador: string;
+  idTerritorio?: number;
+  nombreTerritorio?: string;
+  totalRepeticiones: number;
+}
+
 interface ApiEnvelope<T> {
   exito: number;
   dato?: T;
@@ -105,5 +117,13 @@ export class Voto1x10Client {
 
   personasDeMovilizador(idUsuarioMovilizador: number): Promise<Voto1x10Persona[]> {
     return this.get<Voto1x10Persona[]>(`/api/PersonaMovilizada/buscar-general?idUsuarioMovilizador=${idUsuarioMovilizador}`);
+  }
+
+  celularesRepetidos(params: { idTerritorio?: number; idUsuarioMovilizador?: number }): Promise<Voto1x10PersonaRepetida[]> {
+    const query = new URLSearchParams();
+    if (params.idTerritorio !== undefined) query.set("idTerritorio", String(params.idTerritorio));
+    if (params.idUsuarioMovilizador !== undefined) query.set("idUsuarioMovilizador", String(params.idUsuarioMovilizador));
+    const suffix = query.toString();
+    return this.get<Voto1x10PersonaRepetida[]>(`/api/PersonaMovilizada/celulares-repetidos${suffix ? `?${suffix}` : ""}`);
   }
 }

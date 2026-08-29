@@ -154,6 +154,7 @@ model BotFlow {
   description       String?  @db.NVarChar(Max)
   version           Int      @default(1)
   isActive          Boolean  @default(true)
+  isTemplate        Boolean  @default(false)
   definitionPayload Bytes
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

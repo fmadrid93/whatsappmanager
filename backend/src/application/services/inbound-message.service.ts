@@ -38,6 +38,52 @@ function interpolate(text: string, variables: Record<string, string>): string {
   return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => variables[key] ?? "");
 }
 
+/**
+ * WhatsApp no permite mandar botones nativos de forma confiable con Baileys
+ * (WhatsApp los bloquea/descarta seguido cuando vienen de un cliente no
+ * oficial). En vez de eso, el paso MENU se vuelve más tolerante a cómo la
+ * gente realmente escribe: sin tildes, con mayúsculas de más, con texto
+ * alrededor del número, o con sinónimos comunes de sí/no.
+ */
+function normalizeForMatch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // saca tildes (marcas diacriticas combinantes)
+    .toLocaleLowerCase()
+    .replace(/[¡!¿?.,;:()"'“”]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const YES_SYNONYMS = new Set(["si", "s", "sip", "siii", "yes", "ok", "dale", "afirmativo", "correcto", "ya vote"]);
+const NO_SYNONYMS = new Set(["no", "n", "nop", "negativo", "todavia no", "aun no"]);
+
+function optionLooksLike(normalizedValue: string, normalizedLabel: string, synonyms: Set<string>): boolean {
+  return synonyms.has(normalizedValue) || synonyms.has(normalizedLabel);
+}
+
+function matchesMenuOption(rawInput: string, option: { value: string; label: string }): boolean {
+  const input = normalizeForMatch(rawInput);
+  const value = normalizeForMatch(option.value);
+  const label = normalizeForMatch(option.label);
+
+  if (input === value || input === label) return true;
+
+  // Valor numérico ("1", "2"): aceptar el número aunque venga acompañado de
+  // texto ("el 1 porfa", "opcion 1 porfavor").
+  if (/^\d+$/.test(value)) {
+    const match = input.match(/\d+/);
+    if (match && match[0] === value) return true;
+  }
+
+  // Sinónimos de sí/no, solo si esta opción puntual ya es semánticamente
+  // sí/no (para no "adivinar" en menús de opciones múltiples que no lo son).
+  if (optionLooksLike(value, label, YES_SYNONYMS) && YES_SYNONYMS.has(input)) return true;
+  if (optionLooksLike(value, label, NO_SYNONYMS) && NO_SYNONYMS.has(input)) return true;
+
+  return false;
+}
+
 function conditionPasses(step: Extract<BotFlowStep, { type: "CONDITION" }>, variables: Record<string, string>): boolean {
   const actual = variables[step.variable]?.trim() || "";
   if (step.operator === "EXISTS") return actual.length > 0;
@@ -329,9 +375,7 @@ export class InboundMessageService {
           return true;
         }
 
-        const selectedOption = step.options.find(
-          (option) => option.value.trim().toLocaleLowerCase() === selectedValue.toLocaleLowerCase(),
-        );
+        const selectedOption = step.options.find((option) => matchesMenuOption(selectedValue, option));
         if (!selectedOption) {
           delete variables[step.variable];
           const retryText = step.invalidText?.trim()

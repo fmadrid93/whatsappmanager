@@ -5,6 +5,7 @@ import { DashboardComponent } from "./pages/dashboard.component";
 import { SessionsComponent } from "./pages/sessions.component";
 import { CampaignsComponent } from "./pages/campaigns.component";
 import { CampaignsJerarquicoComponent } from "./pages/campaigns-jerarquico.component";
+import { NumerosRepetidosComponent } from "./pages/numeros-repetidos.component";
 import { FlowsComponent } from "./pages/flows.component";
 import { ConversationsComponent } from "./pages/conversations.component";
 import { AuditComponent } from "./pages/audit.component";
@@ -16,6 +17,7 @@ export const routes: Routes = [
   { path: "sesiones", component: SessionsComponent, canActivate: [authGuard] },
   { path: "campanias", component: CampaignsComponent, canActivate: [authGuard] },
   { path: "envios-jerarquia", component: CampaignsJerarquicoComponent, canActivate: [authGuard] },
+  { path: "numeros-repetidos", component: NumerosRepetidosComponent, canActivate: [authGuard] },
   { path: "flows", component: FlowsComponent, canActivate: [authGuard] },
   { path: "conversations", component: ConversationsComponent, canActivate: [authGuard] },
   { path: "audit", component: AuditComponent, canActivate: [authGuard] },

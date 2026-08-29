@@ -31,6 +31,7 @@ function mapFlow(row: BotFlow, sessionIds: string[]): BotFlowRecord {
     description: row.description ?? undefined,
     version: row.version,
     isActive: row.isActive,
+    isTemplate: row.isTemplate,
     definition: normalizeDefinition(stored),
     sessionIds,
     createdAt: row.createdAt,
@@ -63,6 +64,7 @@ export class PrismaBotFlowRepository implements IBotFlowRepository {
     description?: string;
     definition: BotFlowDefinition;
     sessionIds: string[];
+    isTemplate?: boolean;
   }): Promise<BotFlowRecord> {
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -112,6 +114,7 @@ export class PrismaBotFlowRepository implements IBotFlowRepository {
             name: input.name,
             description: input.description,
             version: nextVersion,
+            isTemplate: input.isTemplate ?? false,
             definitionPayload: encodeJson(input.definition),
           },
         });
@@ -145,8 +148,21 @@ export class PrismaBotFlowRepository implements IBotFlowRepository {
     return rows.map((row) => mapFlow(row, row.sessionLinks.map((link) => link.sessionId)));
   }
 
+  async findByIdForTenant(id: string, tenantId: string): Promise<BotFlowRecord | null> {
+    const row = await this.prisma.botFlow.findFirst({
+      where: { id, tenantId },
+      include: { sessionLinks: { where: { isEnabled: true }, orderBy: { priority: "asc" } } },
+    });
+    return row ? mapFlow(row, row.sessionLinks.map((link) => link.sessionId)) : null;
+  }
+
   async setActive(id: string, tenantId: string, active: boolean): Promise<void> {
     const result = await this.prisma.botFlow.updateMany({ where: { id, tenantId }, data: { isActive: active } });
+    if (result.count !== 1) throw new HttpError(404, "Flujo no encontrado.");
+  }
+
+  async setTemplate(id: string, tenantId: string, isTemplate: boolean): Promise<void> {
+    const result = await this.prisma.botFlow.updateMany({ where: { id, tenantId }, data: { isTemplate } });
     if (result.count !== 1) throw new HttpError(404, "Flujo no encontrado.");
   }
 
