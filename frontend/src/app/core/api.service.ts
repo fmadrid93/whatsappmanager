@@ -44,11 +44,20 @@ export interface CampaignRecord {
 }
 
 
+export interface Voto1x10SeleccionInput {
+  territorioIds: number[];
+  administradorIds: number[];
+  gerenteIds: number[];
+  movilizadorIds: number[];
+}
+
 export interface RecurringCampaignRecord {
   id: string;
   name: string;
-  connectorId: string;
+  sourceType: "CONNECTOR" | "JERARQUIA";
+  connectorId?: string;
   connectorVariables: Record<string, string>;
+  jerarquiaSelection: Voto1x10SeleccionInput;
   sessionIds: string[];
   message: { text: string; caption?: string };
   mediaAssetId?: string;
@@ -664,14 +673,15 @@ export class ApiService {
   recurringCampaigns() { return this.http.get<RecurringCampaignRecord[]>("/api/recurring-campaigns"); }
   createRecurringCampaign(body: {
     name: string;
-    connectorId: string;
-    connectorVariables: Record<string, string>;
     sessionIds: string[];
     message: { text: string; caption?: string };
     mediaAssetId?: string;
     defaultRegion?: string;
     intervalMinutes: number;
-  }) {
+  } & (
+    | { sourceType: "CONNECTOR"; connectorId: string; connectorVariables: Record<string, string> }
+    | { sourceType: "JERARQUIA"; jerarquiaSelection: Voto1x10SeleccionInput }
+  )) {
     return this.http.post<RecurringCampaignRecord>("/api/recurring-campaigns", body);
   }
   pauseRecurringCampaign(id: string) { return this.http.post<void>(`/api/recurring-campaigns/${id}/pause`, {}); }
@@ -679,12 +689,7 @@ export class ApiService {
   deleteRecurringCampaign(id: string) { return this.http.delete<void>(`/api/recurring-campaigns/${id}`); }
 
   voto1x10Jerarquia() { return this.http.get<Voto1x10Jerarquia>("/api/voto1x10/jerarquia"); }
-  voto1x10Contactos(seleccion: {
-    territorioIds: number[];
-    administradorIds: number[];
-    gerenteIds: number[];
-    movilizadorIds: number[];
-  }) {
+  voto1x10Contactos(seleccion: Voto1x10SeleccionInput) {
     return this.http.post<Voto1x10ContactosResult>("/api/voto1x10/contactos", seleccion);
   }
 

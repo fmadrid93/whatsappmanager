@@ -31,16 +31,35 @@ const campaignCreateSchema = z.object({
   defaultRegion: z.string().length(2).optional(),
 });
 
-const recurringCampaignCreateSchema = z.object({
+export const jerarquiaSeleccionSchema = z.object({
+  territorioIds: z.array(z.coerce.number().int()).default([]),
+  administradorIds: z.array(z.coerce.number().int()).default([]),
+  gerenteIds: z.array(z.coerce.number().int()).default([]),
+  movilizadorIds: z.array(z.coerce.number().int()).default([]),
+});
+
+const recurringCampaignCreateBase = {
   name: z.string().min(2).max(150),
-  connectorId: z.string().uuid(),
-  connectorVariables: z.record(z.string(), z.string().max(2000)).default({}),
   sessionIds: z.array(z.string().uuid()).min(1),
   message: z.object({ text: z.string().max(4096), caption: z.string().max(1024).optional() }),
   mediaAssetId: z.string().uuid().optional(),
   defaultRegion: z.string().length(2).optional(),
   intervalMinutes: z.coerce.number().int().min(5).max(10080),
-});
+};
+
+const recurringCampaignCreateSchema = z.discriminatedUnion("sourceType", [
+  z.object({
+    ...recurringCampaignCreateBase,
+    sourceType: z.literal("CONNECTOR"),
+    connectorId: z.string().uuid(),
+    connectorVariables: z.record(z.string(), z.string().max(2000)).default({}),
+  }),
+  z.object({
+    ...recurringCampaignCreateBase,
+    sourceType: z.literal("JERARQUIA"),
+    jerarquiaSelection: jerarquiaSeleccionSchema,
+  }),
+]);
 
 const botFlowStepSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string().default(() => crypto.randomUUID()), type: z.literal("MESSAGE"), text: z.string().min(1).max(4096) }),
@@ -1693,13 +1712,6 @@ export function createRoutes(container: AppContainer): Router {
     }),
   );
 
-  const voto1x10Seleccion = z.object({
-    territorioIds: z.array(z.coerce.number().int()).default([]),
-    administradorIds: z.array(z.coerce.number().int()).default([]),
-    gerenteIds: z.array(z.coerce.number().int()).default([]),
-    movilizadorIds: z.array(z.coerce.number().int()).default([]),
-  });
-
   const requireVoto1x10 = () => {
     if (!container.services.voto1x10HierarchyService) {
       throw new HttpError(
@@ -1724,7 +1736,7 @@ export function createRoutes(container: AppContainer): Router {
     auth,
     requirePermission(permissions.CAMPAIGN_MANAGE),
     asyncHandler(async (request, response) => {
-      const parsed = voto1x10Seleccion.parse(request.body);
+      const parsed = jerarquiaSeleccionSchema.parse(request.body);
       response.json(await requireVoto1x10().getContactosPorSeleccion(parsed));
     }),
   );

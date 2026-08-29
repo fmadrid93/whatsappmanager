@@ -4,7 +4,6 @@ import { LoginComponent } from "./pages/login.component";
 import { DashboardComponent } from "./pages/dashboard.component";
 import { SessionsComponent } from "./pages/sessions.component";
 import { CampaignsComponent } from "./pages/campaigns.component";
-import { RecurringCampaignsComponent } from "./pages/recurring-campaigns.component";
 import { CampaignsJerarquicoComponent } from "./pages/campaigns-jerarquico.component";
 import { FlowsComponent } from "./pages/flows.component";
 import { ConversationsComponent } from "./pages/conversations.component";
@@ -14,9 +13,8 @@ import { IntegrationsComponent } from "./pages/integrations.component";
 export const routes: Routes = [
   { path: "login", component: LoginComponent },
   { path: "", component: DashboardComponent, canActivate: [authGuard] },
-  { path: "sessions", component: SessionsComponent, canActivate: [authGuard] },
-  { path: "campaigns", component: CampaignsComponent, canActivate: [authGuard] },
-  { path: "recurring-campaigns", component: RecurringCampaignsComponent, canActivate: [authGuard] },
+  { path: "sesiones", component: SessionsComponent, canActivate: [authGuard] },
+  { path: "campanias", component: CampaignsComponent, canActivate: [authGuard] },
   { path: "envios-jerarquia", component: CampaignsJerarquicoComponent, canActivate: [authGuard] },
   { path: "flows", component: FlowsComponent, canActivate: [authGuard] },
   { path: "conversations", component: ConversationsComponent, canActivate: [authGuard] },

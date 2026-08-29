@@ -15,9 +15,8 @@ import { AuthService } from "./core/auth.service";
         <a routerLink="/" class="brand"><i class="pi pi-comments"></i> WhatsApp SaaS <small>v1.1.2 alpha</small></a>
         <nav>
           <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Resumen</a>
-          <a routerLink="/sessions" routerLinkActive="active">Sesiones</a>
-          <a routerLink="/campaigns" routerLinkActive="active">Campañas</a>
-          <a routerLink="/recurring-campaigns" routerLinkActive="active">Envíos recurrentes</a>
+          <a routerLink="/sesiones" routerLinkActive="active">Sesiones</a>
+          <a routerLink="/campanias" routerLinkActive="active">Campañas</a>
           <a routerLink="/envios-jerarquia" routerLinkActive="active">Envíos por jerarquía</a>
           <a routerLink="/flows" routerLinkActive="active">Bot Manager</a>
           <a routerLink="/conversations" routerLinkActive="active">Conversaciones</a>

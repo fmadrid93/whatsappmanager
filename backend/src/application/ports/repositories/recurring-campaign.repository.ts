@@ -1,10 +1,22 @@
 import type { CampaignMessagePayload } from "../../../domain/campaign/campaign-message.js";
 
+export type RecurringCampaignSourceType = "CONNECTOR" | "JERARQUIA";
+
+/** Misma forma que SeleccionJerarquica del Voto1x10HierarchyService. */
+export interface RecurringCampaignJerarquiaSelection {
+  territorioIds: number[];
+  administradorIds: number[];
+  gerenteIds: number[];
+  movilizadorIds: number[];
+}
+
 export interface RecurringCampaignRecord {
   id: string;
   tenantId: string;
   createdByUserId: string;
-  connectorId: string;
+  sourceType: RecurringCampaignSourceType;
+  connectorId?: string;
+  jerarquiaSelection: RecurringCampaignJerarquiaSelection;
   mediaAssetId?: string;
   name: string;
   connectorVariables: Record<string, string>;
@@ -27,7 +39,9 @@ export interface CreateRecurringCampaignInput {
   id: string;
   tenantId: string;
   createdByUserId: string;
-  connectorId: string;
+  sourceType: RecurringCampaignSourceType;
+  connectorId?: string;
+  jerarquiaSelection?: RecurringCampaignJerarquiaSelection;
   mediaAssetId?: string;
   name: string;
   connectorVariables: Record<string, string>;

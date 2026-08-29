@@ -1,4 +1,5 @@
 import { Component, OnInit, inject, signal, computed } from "@angular/core";
+import { DatePipe } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ButtonModule } from "primeng/button";
 import { CardModule } from "primeng/card";
@@ -9,6 +10,7 @@ import {
   ApiService,
   type CampaignContactValidationResult,
   type MediaRecord,
+  type RecurringCampaignRecord,
   type SessionRecord,
   type Voto1x10ContactosResult,
   type Voto1x10Jerarquia,
@@ -25,7 +27,7 @@ import {
  */
 @Component({
   standalone: true,
-  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, MultiSelectModule],
+  imports: [FormsModule, DatePipe, ButtonModule, CardModule, InputTextModule, MultiSelectModule],
   template: `
     <main class="page">
       <div class="page-header">
@@ -264,6 +266,74 @@ import {
           }
         </p-card>
       </div>
+
+      <p-card header="3. Repetir automáticamente (opcional)" styleClass="recurring-card">
+        <div class="muted">
+          Guarda la misma selección de arriba (territorio/administrador/gerente/movilizador) y el mismo mensaje para que se repita solo: cada cierto tiempo busca gente nueva que todavía no fue contactada por ningún envío y le manda el mensaje, sin que tengas que volver a esta pantalla.
+        </div>
+
+        <div class="form-grid recurring-form">
+          <label for="cj-rec-interval">Repetir cada</label>
+          <select id="cj-rec-interval" name="cjRecInterval" [(ngModel)]="recurringIntervalMinutes" [ngModelOptions]="{ standalone: true }">
+            @for (preset of intervalPresets; track preset.minutes) {
+              <option [value]="preset.minutes">{{ preset.label }}</option>
+            }
+          </select>
+
+          <p-button
+            type="button"
+            label="Guardar como recurrente"
+            icon="pi pi-refresh"
+            severity="help"
+            [loading]="savingRecurring()"
+            [disabled]="totalSeleccionados() === 0 || !name.trim() || selectedSessionIds().length === 0"
+            (onClick)="crearRecurrente()"
+          />
+          <div class="contact-help">
+            Usa el nombre, sesiones, mensaje, multimedia y región configurados en la columna "Mensaje y envío" de arriba, más la selección de territorio/administrador/gerente/movilizador elegida en "1. Elegí a quién".
+          </div>
+        </div>
+
+        @if (recurrentesJerarquia().length > 0) {
+          <div class="recurring-table-wrap">
+            <table class="recurring-table">
+              <thead>
+                <tr><th>Nombre</th><th>Repite</th><th>Estado</th><th>Última corrida</th><th>Resultado</th><th></th></tr>
+              </thead>
+              <tbody>
+                @for (item of recurrentesJerarquia(); track item.id) {
+                  <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ intervalLabel(item.intervalMinutes) }}</td>
+                    <td><span class="status-pill" [class.paused]="item.status === 'PAUSED'">{{ item.status === 'ACTIVE' ? 'Activo' : 'Pausado' }}</span></td>
+                    <td>{{ item.lastRunAt ? (item.lastRunAt | date:'short') : 'Todavía no corrió' }}</td>
+                    <td>
+                      @if (item.lastRunOutcome) {
+                        <span class="outcome" [class]="item.lastRunOutcome.toLowerCase()">{{ outcomeLabel(item) }}</span>
+                        @if (item.lastRunOutcome === 'ERROR' && item.lastRunError) {
+                          <div class="muted small">{{ item.lastRunError }}</div>
+                        }
+                      } @else {
+                        <span class="muted">—</span>
+                      }
+                    </td>
+                    <td class="actions">
+                      @if (item.status === 'ACTIVE') {
+                        <p-button type="button" icon="pi pi-pause" severity="secondary" size="small" [loading]="busyRecurringIds().has(item.id)" (onClick)="pausarRecurrente(item)" title="Pausar" />
+                      } @else {
+                        <p-button type="button" icon="pi pi-play" severity="success" size="small" [loading]="busyRecurringIds().has(item.id)" (onClick)="reanudarRecurrente(item)" title="Reanudar" />
+                      }
+                      <p-button type="button" icon="pi pi-trash" severity="danger" size="small" [loading]="busyRecurringIds().has(item.id)" (onClick)="eliminarRecurrente(item)" title="Eliminar" />
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <div class="muted" style="margin-top:.8rem">Todavía no configuraste ningún envío recurrente por jerarquía.</div>
+        }
+      </p-card>
     </main>
   `,
   styles: [`
@@ -304,6 +374,22 @@ import {
     @media(max-width:1100px){.hierarchy-columns{grid-template-columns:repeat(2,1fr)}}
     @media(max-width:1000px){.top-grid{grid-template-columns:1fr}}
     @media(max-width:640px){.hierarchy-columns{grid-template-columns:1fr}}
+    .recurring-card{margin-top:1rem}
+    .recurring-form{grid-template-columns:auto auto 1fr;align-items:center;gap:.6rem .9rem}
+    .recurring-form select{max-width:220px}
+    .recurring-form .contact-help{grid-column:1/-1}
+    .recurring-table-wrap{overflow-x:auto;margin-top:1rem}
+    .recurring-table{width:100%;border-collapse:collapse;font-size:.85rem}
+    .recurring-table th{text-align:left;color:#64748b;font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;padding:.4rem .6rem;border-bottom:1px solid #e2e8f0}
+    .recurring-table td{padding:.55rem .6rem;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+    .recurring-table td.actions{display:flex;gap:.4rem}
+    .status-pill{background:#dcfce7;color:#166534;border-radius:999px;padding:.2rem .6rem;font-size:.72rem;font-weight:700}
+    .status-pill.paused{background:#fef3c7;color:#92400e}
+    .outcome{font-weight:700;font-size:.8rem}
+    .outcome.created{color:#027a48}
+    .outcome.empty{color:#64748b}
+    .outcome.error{color:#b42318}
+    @media(max-width:640px){.recurring-form{grid-template-columns:1fr}.recurring-form select{max-width:none}}
   `],
 })
 export class CampaignsJerarquicoComponent implements OnInit {
@@ -407,6 +493,20 @@ export class CampaignsJerarquicoComponent implements OnInit {
     return this.regionOptions.find((r) => r.code === this.defaultRegion)?.label ?? this.defaultRegion;
   }
 
+  readonly recurrentesJerarquia = signal<RecurringCampaignRecord[]>([]);
+  readonly savingRecurring = signal(false);
+  readonly busyRecurringIds = signal<Set<string>>(new Set());
+  recurringIntervalMinutes = 60;
+  readonly intervalPresets = [
+    { label: "Cada 15 minutos", minutes: 15 },
+    { label: "Cada 30 minutos", minutes: 30 },
+    { label: "Cada hora", minutes: 60 },
+    { label: "Cada 2 horas", minutes: 120 },
+    { label: "Cada 6 horas", minutes: 360 },
+    { label: "Cada 12 horas", minutes: 720 },
+    { label: "Una vez al día", minutes: 1440 },
+  ];
+
   ngOnInit(): void {
     this.loadJerarquia();
     this.api.sessions().subscribe((items) => {
@@ -414,6 +514,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
       this.connectedSessions.set(items.filter((item) => item.status === "CONNECTED"));
     });
     this.api.media().subscribe({ next: (items) => this.mediaItems.set(items), error: () => this.mediaItems.set([]) });
+    this.loadRecurrentes();
   }
 
   loadJerarquia(): void {
@@ -572,5 +673,116 @@ export class CampaignsJerarquicoComponent implements OnInit {
     this.selectedMediaAssetId.set("");
     this.selectedSessionIds.set([]);
     this.limpiarSeleccion();
+  }
+
+  loadRecurrentes(): void {
+    this.api.recurringCampaigns().subscribe({
+      next: (items) => this.recurrentesJerarquia.set(items.filter((item) => item.sourceType === "JERARQUIA")),
+      error: () => this.recurrentesJerarquia.set([]),
+    });
+  }
+
+  intervalLabel(minutes: number): string {
+    const preset = this.intervalPresets.find((item) => item.minutes === minutes);
+    if (preset) return preset.label;
+    if (minutes % 1440 === 0) return `Cada ${minutes / 1440} día(s)`;
+    if (minutes % 60 === 0) return `Cada ${minutes / 60} h`;
+    return `Cada ${minutes} min`;
+  }
+
+  outcomeLabel(item: RecurringCampaignRecord): string {
+    if (item.lastRunOutcome === "CREATED") {
+      return `${item.lastRunContactsNew ?? 0} nuevo(s) de ${item.lastRunContactsFound ?? 0} encontrado(s)`;
+    }
+    if (item.lastRunOutcome === "EMPTY") {
+      return `Sin novedades (${item.lastRunContactsFound ?? 0} encontrado(s), ya contactados)`;
+    }
+    return "Error en la última corrida";
+  }
+
+  crearRecurrente(): void {
+    if (!this.name.trim()) {
+      this.messages.add({ severity: "warn", summary: "Ingresa un nombre" });
+      return;
+    }
+    if (this.selectedSessionIds().length === 0) {
+      this.messages.add({ severity: "warn", summary: "Selecciona al menos una sesión emisora" });
+      return;
+    }
+    if (this.totalSeleccionados() === 0) {
+      this.messages.add({ severity: "warn", summary: "Elegí al menos un territorio, administrador, gerente o movilizador" });
+      return;
+    }
+    if (!this.messageText.trim() && !this.selectedMediaAssetId()) {
+      this.messages.add({ severity: "warn", summary: "Agrega un mensaje o multimedia" });
+      return;
+    }
+
+    this.savingRecurring.set(true);
+    this.api.createRecurringCampaign({
+      name: this.name.trim(),
+      sourceType: "JERARQUIA",
+      jerarquiaSelection: {
+        territorioIds: this.territorioIds(),
+        administradorIds: this.administradorIds(),
+        gerenteIds: this.gerenteIds(),
+        movilizadorIds: this.movilizadorIds(),
+      },
+      sessionIds: this.selectedSessionIds(),
+      message: { text: this.messageText },
+      mediaAssetId: this.selectedMediaAssetId() || undefined,
+      defaultRegion: this.defaultRegion.toUpperCase(),
+      intervalMinutes: this.recurringIntervalMinutes,
+    }).subscribe({
+      next: () => {
+        this.savingRecurring.set(false);
+        this.messages.add({ severity: "success", summary: "Envío recurrente guardado" });
+        this.loadRecurrentes();
+      },
+      error: (error: { error?: { message?: string } }) => {
+        this.savingRecurring.set(false);
+        this.messages.add({ severity: "error", summary: "No se pudo guardar el envío recurrente", detail: error.error?.message });
+      },
+    });
+  }
+
+  private setBusyRecurring(id: string, busy: boolean): void {
+    const current = new Set(this.busyRecurringIds());
+    if (busy) current.add(id); else current.delete(id);
+    this.busyRecurringIds.set(current);
+  }
+
+  pausarRecurrente(item: RecurringCampaignRecord): void {
+    this.setBusyRecurring(item.id, true);
+    this.api.pauseRecurringCampaign(item.id).subscribe({
+      next: () => { this.setBusyRecurring(item.id, false); this.loadRecurrentes(); },
+      error: (error: { error?: { message?: string } }) => {
+        this.setBusyRecurring(item.id, false);
+        this.messages.add({ severity: "error", summary: "No se pudo pausar", detail: error.error?.message });
+      },
+    });
+  }
+
+  reanudarRecurrente(item: RecurringCampaignRecord): void {
+    this.setBusyRecurring(item.id, true);
+    this.api.resumeRecurringCampaign(item.id).subscribe({
+      next: () => { this.setBusyRecurring(item.id, false); this.loadRecurrentes(); },
+      error: (error: { error?: { message?: string } }) => {
+        this.setBusyRecurring(item.id, false);
+        this.messages.add({ severity: "error", summary: "No se pudo reanudar", detail: error.error?.message });
+      },
+    });
+  }
+
+  eliminarRecurrente(item: RecurringCampaignRecord): void {
+    if (!window.confirm(`¿Eliminar el envío recurrente "${item.name}"? Las campañas que ya creó no se borran.`)) return;
+    this.setBusyRecurring(item.id, true);
+    this.api.deleteRecurringCampaign(item.id).subscribe({
+      next: () => { this.setBusyRecurring(item.id, false); this.loadRecurrentes(); },
+      error: (error: { error?: { message?: string } }) => {
+        this.setBusyRecurring(item.id, false);
+        this.messages.add({ severity: "error", summary: "No se pudo eliminar", detail: error.error?.message });
+      },
+    });
   }
 }

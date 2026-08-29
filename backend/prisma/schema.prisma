@@ -769,7 +769,9 @@ model RecurringCampaign {
   id                        String    @id @default(uuid()) @db.UniqueIdentifier
   tenantId                  String    @db.UniqueIdentifier
   createdByUserId           String    @db.UniqueIdentifier
-  connectorId               String    @db.UniqueIdentifier
+  sourceType                String    @default("CONNECTOR") @db.NVarChar(20)
+  connectorId               String?   @db.UniqueIdentifier
+  jerarquiaSelectionPayload Bytes
   mediaAssetId              String?   @db.UniqueIdentifier
   name                      String    @db.NVarChar(191)
   connectorVariablesPayload Bytes
@@ -787,10 +789,10 @@ model RecurringCampaign {
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 
-  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  createdBy  AppUser           @relation("RecurringCampaignCreator", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  connector  ExternalConnector @relation(fields: [connectorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mediaAsset MediaAsset?       @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy  AppUser            @relation("RecurringCampaignCreator", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  connector  ExternalConnector? @relation(fields: [connectorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaAsset MediaAsset?        @relation(fields: [mediaAssetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([tenantId, status])
   @@index([status, lastRunAt])

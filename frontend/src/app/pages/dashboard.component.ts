@@ -12,7 +12,7 @@ import { ApiService, type CampaignRecord, type CapacitySnapshot, type Conversati
     <main class="page">
       <div class="page-header">
         <div><h1>Resumen operativo</h1><div class="muted">Estado actual de la plataforma</div></div>
-        <a routerLink="/sessions"><p-button label="Nueva sesión" icon="pi pi-plus" /></a>
+        <a routerLink="/sesiones"><p-button label="Nueva sesión" icon="pi pi-plus" /></a>
       </div>
       <div class="stats">
         <p-card><div class="value">{{ sessions() }}</div><div class="muted">Sesiones</div></p-card>

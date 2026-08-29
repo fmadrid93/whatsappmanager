@@ -4,6 +4,7 @@ import type {
   IRecurringCampaignRepository,
   RecordRunResultInput,
   RecurringCampaignRecord,
+  RecurringCampaignSourceType,
 } from "../../application/ports/repositories/recurring-campaign.repository.js";
 import { decodeJson, encodeJson } from "../../shared/utils/json-buffer.js";
 
@@ -12,7 +13,9 @@ function mapRow(row: RecurringCampaign): RecurringCampaignRecord {
     id: row.id,
     tenantId: row.tenantId,
     createdByUserId: row.createdByUserId,
-    connectorId: row.connectorId,
+    sourceType: row.sourceType as RecurringCampaignSourceType,
+    connectorId: row.connectorId ?? undefined,
+    jerarquiaSelection: decodeJson(row.jerarquiaSelectionPayload),
     mediaAssetId: row.mediaAssetId ?? undefined,
     name: row.name,
     connectorVariables: decodeJson(row.connectorVariablesPayload),
@@ -32,6 +35,8 @@ function mapRow(row: RecurringCampaign): RecurringCampaignRecord {
   };
 }
 
+const EMPTY_JERARQUIA_SELECTION = { territorioIds: [], administradorIds: [], gerenteIds: [], movilizadorIds: [] };
+
 export class PrismaRecurringCampaignRepository implements IRecurringCampaignRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -41,7 +46,9 @@ export class PrismaRecurringCampaignRepository implements IRecurringCampaignRepo
         id: input.id,
         tenantId: input.tenantId,
         createdByUserId: input.createdByUserId,
+        sourceType: input.sourceType,
         connectorId: input.connectorId,
+        jerarquiaSelectionPayload: encodeJson(input.jerarquiaSelection ?? EMPTY_JERARQUIA_SELECTION),
         mediaAssetId: input.mediaAssetId,
         name: input.name,
         connectorVariablesPayload: encodeJson(input.connectorVariables),

@@ -5,13 +5,31 @@ import type { IExternalConnectorRepository } from "../ports/repositories/externa
 import type { IMessageQueueRepository } from "../ports/repositories/message-queue.repository.js";
 import type {
   IRecurringCampaignRepository,
+  RecurringCampaignJerarquiaSelection,
   RecurringCampaignRecord,
+  RecurringCampaignSourceType,
 } from "../ports/repositories/recurring-campaign.repository.js";
 import type { CampaignService } from "./campaign.service.js";
 import type { ExternalConnectorService } from "./external-connector.service.js";
 import type { PhoneNormalizerService } from "./phone-normalizer.service.js";
+import type { Voto1x10HierarchyService } from "./voto1x10-hierarchy.service.js";
 
 const MIN_INTERVAL_MINUTES = 5;
+const EMPTY_JERARQUIA_SELECTION: RecurringCampaignJerarquiaSelection = {
+  territorioIds: [],
+  administradorIds: [],
+  gerenteIds: [],
+  movilizadorIds: [],
+};
+
+function seleccionEstaVacia(seleccion: RecurringCampaignJerarquiaSelection): boolean {
+  return (
+    seleccion.territorioIds.length === 0 &&
+    seleccion.administradorIds.length === 0 &&
+    seleccion.gerenteIds.length === 0 &&
+    seleccion.movilizadorIds.length === 0
+  );
+}
 
 export class RecurringCampaignService {
   constructor(
@@ -21,14 +39,17 @@ export class RecurringCampaignService {
     private readonly campaigns: CampaignService,
     private readonly messageQueue: IMessageQueueRepository,
     private readonly phones: PhoneNormalizerService,
+    private readonly voto1x10Hierarchy: Voto1x10HierarchyService | null,
   ) {}
 
   async create(input: {
     tenantId: string;
     createdByUserId: string;
     name: string;
-    connectorId: string;
-    connectorVariables: Record<string, string>;
+    sourceType: RecurringCampaignSourceType;
+    connectorId?: string;
+    connectorVariables?: Record<string, string>;
+    jerarquiaSelection?: RecurringCampaignJerarquiaSelection;
     sessionIds: string[];
     message: CampaignMessagePayload;
     mediaAssetId?: string;
@@ -44,20 +65,37 @@ export class RecurringCampaignService {
       throw new HttpError(400, `El intervalo mínimo es de ${MIN_INTERVAL_MINUTES} minutos.`);
     }
 
-    const connector = await this.connectorRepository.findById(input.tenantId, input.connectorId);
-    if (!connector) throw new HttpError(404, "Conector no encontrado.");
-    if (connector.purpose !== "CONTACT_SOURCE") {
-      throw new HttpError(400, "El conector seleccionado no está configurado como fuente de contactos.");
+    let connectorId: string | undefined;
+    let jerarquiaSelection = EMPTY_JERARQUIA_SELECTION;
+
+    if (input.sourceType === "CONNECTOR") {
+      if (!input.connectorId) throw new HttpError(400, "Selecciona una fuente de contactos.");
+      const connector = await this.connectorRepository.findById(input.tenantId, input.connectorId);
+      if (!connector) throw new HttpError(404, "Conector no encontrado.");
+      if (connector.purpose !== "CONTACT_SOURCE") {
+        throw new HttpError(400, "El conector seleccionado no está configurado como fuente de contactos.");
+      }
+      connectorId = input.connectorId;
+    } else {
+      if (!this.voto1x10Hierarchy) {
+        throw new HttpError(503, "La integración con el sistema 1x10 no está configurada.");
+      }
+      if (!input.jerarquiaSelection || seleccionEstaVacia(input.jerarquiaSelection)) {
+        throw new HttpError(400, "Selecciona al menos un territorio, administrador, gerente o movilizador.");
+      }
+      jerarquiaSelection = input.jerarquiaSelection;
     }
 
     return this.repository.create({
       id: crypto.randomUUID(),
       tenantId: input.tenantId,
       createdByUserId: input.createdByUserId,
-      connectorId: input.connectorId,
+      sourceType: input.sourceType,
+      connectorId,
+      jerarquiaSelection,
       mediaAssetId: input.mediaAssetId,
       name: input.name.trim(),
-      connectorVariables: input.connectorVariables,
+      connectorVariables: input.connectorVariables ?? {},
       sessionIds: [...new Set(input.sessionIds)],
       message: input.message,
       defaultRegion: input.defaultRegion,
@@ -109,25 +147,53 @@ export class RecurringCampaignService {
   async runOnce(record: RecurringCampaignRecord): Promise<void> {
     const ranAt = new Date();
     try {
-      const preview = await this.connectors.previewContacts({
-        tenantId: record.tenantId,
-        connectorId: record.connectorId,
-        variables: record.connectorVariables,
-      });
+      let contacts: Array<{ name?: string; phone: string; variables: Record<string, string> }>;
 
-      if (preview.outcome === "ERROR") {
-        await this.repository.recordRunResult(record.id, {
-          outcome: "ERROR",
-          contactsFound: 0,
-          contactsNew: 0,
-          errorMessage: preview.errorMessage ?? "Error al consultar el conector de contactos.",
-          ranAt,
+      if (record.sourceType === "CONNECTOR") {
+        if (!record.connectorId) {
+          await this.repository.recordRunResult(record.id, {
+            outcome: "ERROR",
+            contactsFound: 0,
+            contactsNew: 0,
+            errorMessage: "Este envío recurrente no tiene conector configurado.",
+            ranAt,
+          });
+          return;
+        }
+        const preview = await this.connectors.previewContacts({
+          tenantId: record.tenantId,
+          connectorId: record.connectorId,
+          variables: record.connectorVariables,
         });
-        return;
+
+        if (preview.outcome === "ERROR") {
+          await this.repository.recordRunResult(record.id, {
+            outcome: "ERROR",
+            contactsFound: 0,
+            contactsNew: 0,
+            errorMessage: preview.errorMessage ?? "Error al consultar el conector de contactos.",
+            ranAt,
+          });
+          return;
+        }
+        contacts = preview.contacts;
+      } else {
+        if (!this.voto1x10Hierarchy) {
+          await this.repository.recordRunResult(record.id, {
+            outcome: "ERROR",
+            contactsFound: 0,
+            contactsNew: 0,
+            errorMessage: "La integración con el sistema 1x10 no está configurada.",
+            ranAt,
+          });
+          return;
+        }
+        const resultado = await this.voto1x10Hierarchy.getContactosPorSeleccion(record.jerarquiaSelection);
+        contacts = resultado.contacts.map((contact) => ({ name: contact.name, phone: contact.phone, variables: {} }));
       }
 
       const normalizedByE164 = new Map<string, { name?: string; raw: string; variables: Record<string, string> }>();
-      for (const contact of preview.contacts) {
+      for (const contact of contacts) {
         const result = this.phones.tryNormalize(contact.phone, record.defaultRegion);
         if (!result.ok) continue;
         if (!normalizedByE164.has(result.value.e164)) {
