@@ -69,6 +69,19 @@ Implementado en:
    abasto para la suma de IPs simultáneas de los 40 servidores juntos, no solo
    por servidor individual.
 
+## 🔴 CRÍTICO — el proxy Decodo (residencial) causó cortes de conexión, no solo el bucket
+
+El 2026-08-29, después de arreglar lo del bucket (ver más abajo), se detectó que **incluso con `PROXY_URL` solo (sin bucket)**, la sesión de WhatsApp se conectaba y se caía cada 10-30 segundos en loop (`statusCode 428`, "Desconexión transitoria... reintentando"), llegando incluso a un LOGGED_OUT completo una vez. Los mensajes quedaban atascados en "EN COLA" para siempre porque la sesión nunca se mantenía CONNECTED el tiempo suficiente.
+
+**Prueba hecha:** se sacó `PROXY_URL` del `.env` (temporalmente, comentado) y se reinició el worker — la sesión quedó CONNECTED estable sin cortarse, y los mensajes pendientes se mandaron al toque.
+
+**Conclusión:** el proxy residencial de Decodo (`gate.decodo.com:10001`, cuenta `spi7impg8h`) no sostiene una conexión WebSocket larga de forma estable — más allá del tema del formato de sticky-session. Esto es un problema serio para el plan de los 40 servidores: si el proxy no aguanta una conexión estable, no importa cuán bien armado esté el bucketing, WhatsApp se va a seguir cortando.
+
+**Antes de usar Decodo en producción real, hay que:**
+1. Confirmar con Decodo si el plan actual es realmente compatible con conexiones WebSocket persistentes de larga duración (algunos planes residenciales están pensados para requests HTTP cortos, no sockets abiertos por horas).
+2. Evaluar si conviene un proxy **datacenter** en vez de residencial para este caso de uso específico (menos "creíble" como IP hogareña, pero mucho más estable para conexiones largas) — quizás un híbrido: datacenter para la conexión del socket, y aceptar el trade-off de IP compartida más "vista" pero estable.
+3. Mientras tanto, el servidor de referencia quedó **sin proxy** (`PROXY_URL` comentado en el `.env`) para no bloquear las pruebas — osea, temporalmente sale directo por la IP del EC2, sin la protección que buscábamos. Hay que decidir con el usuario cuándo/cómo reactivarlo.
+
 ## ⚠️ IMPORTANTE — verificar antes de volver a activar `PROXY_IP_BUCKET_COUNT`
 
 El 2026-08-29 se activó `PROXY_IP_BUCKET_COUNT` en el servidor de referencia y **rompió la conexión de WhatsApp por completo** (ningún QR se generaba, silenciosamente, sin error visible). Causa: el sufijo de sticky-session (`-session-bucket<N>-sessionduration-<min>`) que se le agrega al usuario del proxy está basado en la documentación general de Decodo, pero **no está confirmado que el puerto/cuenta actual (`gate.decodo.com:10001`) lo soporte** — probado con `curl` directo: sin el sufijo conecta en 0.4s, con el sufijo se cuelga y falla.
