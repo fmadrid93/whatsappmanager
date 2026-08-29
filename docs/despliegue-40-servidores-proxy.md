@@ -69,6 +69,16 @@ Implementado en:
    abasto para la suma de IPs simultáneas de los 40 servidores juntos, no solo
    por servidor individual.
 
+## ⚠️ IMPORTANTE — verificar antes de volver a activar `PROXY_IP_BUCKET_COUNT`
+
+El 2026-08-29 se activó `PROXY_IP_BUCKET_COUNT` en el servidor de referencia y **rompió la conexión de WhatsApp por completo** (ningún QR se generaba, silenciosamente, sin error visible). Causa: el sufijo de sticky-session (`-session-bucket<N>-sessionduration-<min>`) que se le agrega al usuario del proxy está basado en la documentación general de Decodo, pero **no está confirmado que el puerto/cuenta actual (`gate.decodo.com:10001`) lo soporte** — probado con `curl` directo: sin el sufijo conecta en 0.4s, con el sufijo se cuelga y falla.
+
+Se revirtió (variable sacada del `.env`) y la conexión volvió a funcionar normal.
+
+**Antes de volver a setear `PROXY_IP_BUCKET_COUNT` en cualquier servidor**, confirmar con Decodo:
+1. El formato exacto de sticky-session para esta cuenta/plan (puede que haga falta otro puerto, no el 10001).
+2. Probarlo primero con `curl --proxy "http://usuario-session-bucket1-sessionduration-30:clave@gate.decodo.com:PUERTO" https://ifconfig.me` desde el servidor — si no da `200` rápido, no activar.
+
 ## Estado actual (servidor de referencia, 52.202.57.2)
 
 - Configurado para **300 sesiones** → `PROXY_IP_BUCKET_COUNT=50`.
