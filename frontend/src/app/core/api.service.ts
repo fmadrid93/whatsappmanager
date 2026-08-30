@@ -89,6 +89,8 @@ export interface Voto1x10Usuario {
   idTerritorio?: number;
   territorio?: string;
   idUsuarioSupervisor?: number;
+  /** Login del sistema 1x10 — sirve para vincular con el nombre de la sesión de WhatsApp. */
+  usuario?: string;
   nombreCompleto: string;
   totalPersonas: number;
 }

@@ -150,9 +150,16 @@ import {
             <label for="cj-name">Nombre de la campaña</label>
             <input pInputText id="cj-name" name="cjName" [(ngModel)]="name" />
 
-            <label>Sesiones emisoras</label>
+            <label>
+              Sesiones emisoras
+              @if (sesionesFiltradasActivas()) {
+                <span class="muted small"> (de los elegidos arriba)</span>
+              } @else if (administradorIds().length + gerenteIds().length + movilizadorIds().length > 0) {
+                <span class="muted small"> (ninguna sesión propia encontrada, mostrando todas)</span>
+              }
+            </label>
             <div class="session-options">
-              @for (session of connectedSessions(); track session.id) {
+              @for (session of sesionesDeSeleccionados(); track session.id) {
                 <label class="check-row">
                   <input type="checkbox" [checked]="selectedSessionIds().includes(session.id)" (change)="toggleSession(session.id)" />
                   {{ session.name }} — {{ session.phoneE164 || session.status }}
@@ -458,6 +465,43 @@ export class CampaignsJerarquicoComponent implements OnInit {
   readonly sessions = signal<SessionRecord[]>([]);
   readonly connectedSessions = signal<SessionRecord[]>([]);
   readonly selectedSessionIds = signal<string[]>([]);
+
+  /**
+   * Sesiones de WhatsApp de las personas elegidas en "1. Elegí a quién"
+   * (administrador/gerente/movilizador) — matchea por el login de esa
+   * persona en el sistema 1x10 contenido en el nombre de la sesión (ej.
+   * "capital_movil_fmadridmovilizador_a1" contiene "fmadridmovilizador"),
+   * o por el patrón u{idUsuario}_principal que usa el sistema para sus
+   * mensajes automáticos. Sin nadie elegido en esos 3 niveles, o si ninguna
+   * sesión matchea, se muestran todas las conectadas (no dejar la lista vacía).
+   */
+  private readonly coincidenciasSesionesElegidos = computed<SessionRecord[]>(() => {
+    const data = this.jerarquia();
+    const conectadas = this.connectedSessions();
+    const idsElegidos = [...this.administradorIds(), ...this.gerenteIds(), ...this.movilizadorIds()];
+    if (!data || idsElegidos.length === 0) return [];
+
+    const personas = [...data.administradores, ...data.gerentes, ...data.movilizadores]
+      .filter((p) => idsElegidos.includes(p.idUsuario));
+
+    return conectadas.filter((session) => {
+      const nombre = session.name.toLowerCase();
+      return personas.some((p) => {
+        if (nombre === `u${p.idUsuario}_principal`) return true;
+        const login = p.usuario?.trim().toLowerCase();
+        return !!login && login.length >= 3 && nombre.includes(login);
+      });
+    });
+  });
+
+  /** Sesiones a mostrar: las de los elegidos si hubo coincidencia, si no todas las conectadas (nunca vacío por el filtro). */
+  readonly sesionesDeSeleccionados = computed<SessionRecord[]>(() => {
+    const coincidencias = this.coincidenciasSesionesElegidos();
+    return coincidencias.length > 0 ? coincidencias : this.connectedSessions();
+  });
+
+  /** True cuando el filtro por administrador/gerente/movilizador encontró sesión(es) propia(s) (no cayó al fallback de "todas"). */
+  readonly sesionesFiltradasActivas = computed(() => this.coincidenciasSesionesElegidos().length > 0);
   readonly mediaItems = signal<MediaRecord[]>([]);
   readonly selectedMediaAssetId = signal("");
 
