@@ -9,6 +9,7 @@ import { MessageService } from "primeng/api";
 import {
   ApiService,
   type CampaignContactValidationResult,
+  type CampaignRecord,
   type MediaRecord,
   type RecurringCampaignRecord,
   type SessionRecord,
@@ -150,22 +151,34 @@ import {
             <label for="cj-name">Nombre de la campaña</label>
             <input pInputText id="cj-name" name="cjName" [(ngModel)]="name" />
 
-            <label>
-              Sesiones emisoras
-              @if (sesionesFiltradasActivas()) {
-                <span class="muted small"> (de los elegidos arriba)</span>
-              } @else if (administradorIds().length + gerenteIds().length + movilizadorIds().length > 0) {
-                <span class="muted small"> (ninguna sesión propia encontrada, mostrando todas)</span>
-              }
-            </label>
+            <label>Sesiones emisoras</label>
+            <div class="session-toolbar">
+              <div class="session-toggle">
+                <button type="button" class="tab-btn" [class.active]="!mostrarTodasLasSesiones()" (click)="mostrarTodasLasSesiones.set(false)">
+                  De los elegidos arriba@if (haySeleccionJerarquica()) { ({{ sesionesDeElegidosCount() }}) }
+                </button>
+                <button type="button" class="tab-btn" [class.active]="mostrarTodasLasSesiones()" (click)="mostrarTodasLasSesiones.set(true)">
+                  Todas ({{ sessions().length }})
+                </button>
+              </div>
+              <select class="estado-select" [ngModel]="filtroEstadoSesion()" (ngModelChange)="filtroEstadoSesion.set($event)" name="cjFiltroEstadoSesion" [ngModelOptions]="{ standalone: true }">
+                <option value="">Todos los estados</option>
+                @for (estado of estadosDisponibles(); track estado) {
+                  <option [value]="estado">{{ sessionStatusLabel(estado) }}</option>
+                }
+              </select>
+            </div>
+            @if (!mostrarTodasLasSesiones() && haySeleccionJerarquica() && sesionesDeElegidosCount() === 0) {
+              <div class="muted small">Ninguno de los elegidos arriba tiene una sesión de WhatsApp propia todavía.</div>
+            }
             <div class="session-options">
               @for (session of sesionesDeSeleccionados(); track session.id) {
                 <label class="check-row">
                   <input type="checkbox" [checked]="selectedSessionIds().includes(session.id)" (change)="toggleSession(session.id)" />
-                  {{ session.name }} — {{ session.phoneE164 || session.status }}
+                  {{ session.name }} — {{ session.phoneE164 || sessionStatusLabel(session.status) }}
                 </label>
               } @empty {
-                <div class="muted">Conecta al menos una sesión real.</div>
+                <div class="muted">No hay sesiones para este filtro.</div>
               }
             </div>
 
@@ -341,6 +354,35 @@ import {
           <div class="muted" style="margin-top:.8rem">Todavía no configuraste ningún envío recurrente por jerarquía.</div>
         }
       </p-card>
+
+      <p-card header="4. Campañas registradas" styleClass="recurring-card">
+        @if (loadingCampanias()) {
+          <div class="muted">Cargando campañas...</div>
+        } @else if (campanias().length === 0) {
+          <div class="muted">Todavía no creaste ninguna campaña.</div>
+        } @else {
+          <div class="recurring-table-wrap">
+            <table class="recurring-table">
+              <thead>
+                <tr><th>Nombre</th><th>Estado</th><th>Destinatarios</th><th>Enviados</th><th>Fallidos</th><th>Creada</th></tr>
+              </thead>
+              <tbody>
+                @for (campania of campanias(); track campania.id) {
+                  <tr>
+                    <td>{{ campania.name }}</td>
+                    <td><span class="status-pill" [class.paused]="campania.status === 'PAUSED'">{{ campaignStatusLabel(campania.status) }}</span></td>
+                    <td>{{ campania.totalMessages }}</td>
+                    <td>{{ campania.sentMessages }}</td>
+                    <td>{{ campania.failedMessages }}</td>
+                    <td>{{ campania.createdAt | date:'short' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="contact-help" style="margin-top:.6rem">Para pausar, cancelar o ver el detalle completo de una campaña, andá a la pantalla "Campañas".</div>
+        }
+      </p-card>
     </main>
   `,
   styles: [`
@@ -367,6 +409,9 @@ import {
     .lista-tabs{display:flex;gap:.35rem;flex-wrap:wrap}
     .tab-btn{border:1px solid #e2e8f0;background:#f8fafc;border-radius:999px;padding:.3rem .7rem;font-size:.75rem;font-weight:600;color:#475569;cursor:pointer}
     .tab-btn.active{background:#0f172a;border-color:#0f172a;color:#fff}
+    .session-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.4rem}
+    .session-toggle{display:flex;gap:.35rem;flex-wrap:wrap}
+    .estado-select{border:1px solid #cfd8e3;border-radius:9px;padding:.4rem .6rem;font-size:.78rem;background:#fff;min-width:150px}
     .filtro-input{flex:1;min-width:180px;max-width:280px}
     .lista-hint{display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:#b45309}
     .numeros-list{max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:.25rem}
@@ -466,25 +511,31 @@ export class CampaignsJerarquicoComponent implements OnInit {
   readonly connectedSessions = signal<SessionRecord[]>([]);
   readonly selectedSessionIds = signal<string[]>([]);
 
+  /** Control explícito del usuario: mostrar solo las sesiones de los elegidos arriba, o todas. Nada de fallback automático/silencioso. */
+  readonly mostrarTodasLasSesiones = signal(false);
+  /** Filtro por estado de sesión ('' = todos los estados). */
+  readonly filtroEstadoSesion = signal("");
+
   /**
    * Sesiones de WhatsApp de las personas elegidas en "1. Elegí a quién"
    * (administrador/gerente/movilizador) — matchea por el login de esa
    * persona en el sistema 1x10 contenido en el nombre de la sesión (ej.
    * "capital_movil_fmadridmovilizador_a1" contiene "fmadridmovilizador"),
    * o por el patrón u{idUsuario}_principal que usa el sistema para sus
-   * mensajes automáticos. Sin nadie elegido en esos 3 niveles, o si ninguna
-   * sesión matchea, se muestran todas las conectadas (no dejar la lista vacía).
+   * mensajes automáticos. Mira TODAS las sesiones (no solo conectadas) para
+   * que el filtro por estado tenga sentido (ej. ver que la suya está
+   * "conectando" todavía).
    */
   private readonly coincidenciasSesionesElegidos = computed<SessionRecord[]>(() => {
     const data = this.jerarquia();
-    const conectadas = this.connectedSessions();
+    const todas = this.sessions();
     const idsElegidos = [...this.administradorIds(), ...this.gerenteIds(), ...this.movilizadorIds()];
     if (!data || idsElegidos.length === 0) return [];
 
     const personas = [...data.administradores, ...data.gerentes, ...data.movilizadores]
       .filter((p) => idsElegidos.includes(p.idUsuario));
 
-    return conectadas.filter((session) => {
+    return todas.filter((session) => {
       const nombre = session.name.toLowerCase();
       return personas.some((p) => {
         if (nombre === `u${p.idUsuario}_principal`) return true;
@@ -494,14 +545,25 @@ export class CampaignsJerarquicoComponent implements OnInit {
     });
   });
 
-  /** Sesiones a mostrar: las de los elegidos si hubo coincidencia, si no todas las conectadas (nunca vacío por el filtro). */
+  readonly haySeleccionJerarquica = computed(() =>
+    this.administradorIds().length + this.gerenteIds().length + this.movilizadorIds().length > 0);
+
+  readonly sesionesDeElegidosCount = computed(() => this.coincidenciasSesionesElegidos().length);
+
+  /** Base antes del filtro de estado: de los elegidos, o todas (según el toggle / si no hay nadie elegido). */
+  private readonly sesionesBase = computed<SessionRecord[]>(() =>
+    this.mostrarTodasLasSesiones() || !this.haySeleccionJerarquica() ? this.sessions() : this.coincidenciasSesionesElegidos());
+
+  /** Lista final que se muestra: la base, filtrada por estado si hay uno elegido. */
   readonly sesionesDeSeleccionados = computed<SessionRecord[]>(() => {
-    const coincidencias = this.coincidenciasSesionesElegidos();
-    return coincidencias.length > 0 ? coincidencias : this.connectedSessions();
+    const base = this.sesionesBase();
+    const estado = this.filtroEstadoSesion();
+    return estado ? base.filter((s) => s.status === estado) : base;
   });
 
-  /** True cuando el filtro por administrador/gerente/movilizador encontró sesión(es) propia(s) (no cayó al fallback de "todas"). */
-  readonly sesionesFiltradasActivas = computed(() => this.coincidenciasSesionesElegidos().length > 0);
+  /** Estados presentes en la base actual, para armar el <select> de filtro sin mostrar opciones vacías. */
+  readonly estadosDisponibles = computed<string[]>(() => [...new Set(this.sesionesBase().map((s) => s.status))]);
+
   readonly mediaItems = signal<MediaRecord[]>([]);
   readonly selectedMediaAssetId = signal("");
 
@@ -537,6 +599,9 @@ export class CampaignsJerarquicoComponent implements OnInit {
     return this.regionOptions.find((r) => r.code === this.defaultRegion)?.label ?? this.defaultRegion;
   }
 
+  readonly campanias = signal<CampaignRecord[]>([]);
+  readonly loadingCampanias = signal(false);
+
   readonly recurrentesJerarquia = signal<RecurringCampaignRecord[]>([]);
   readonly savingRecurring = signal(false);
   readonly busyRecurringIds = signal<Set<string>>(new Set());
@@ -559,6 +624,23 @@ export class CampaignsJerarquicoComponent implements OnInit {
     });
     this.api.media().subscribe({ next: (items) => this.mediaItems.set(items), error: () => this.mediaItems.set([]) });
     this.loadRecurrentes();
+    this.loadCampanias();
+  }
+
+  sessionStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      NEW: "NUEVA",
+      CONNECTING: "CONECTANDO",
+      CONNECTED: "CONECTADA",
+      DISCONNECTED: "DESCONECTADA",
+      LOGGED_OUT: "SESIÓN CERRADA",
+      QUARANTINED: "CUARENTENA",
+      QR_REQUIRED: "QR REQUERIDO",
+      PAIRING_CODE: "CÓDIGO REQUERIDO",
+      PAIRING_FAILED: "VINCULACIÓN FALLIDA",
+      DELETED: "ELIMINADA",
+    };
+    return labels[status] ?? status;
   }
 
   loadJerarquia(): void {
@@ -686,6 +768,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
         this.saving.set(false);
         this.ultimaCampaniaCreada.set({ id: created.id, name: created.name, totalMessages: created.totalMessages });
         this.messages.add({ severity: "success", summary: "Campaña creada en borrador" });
+        this.loadCampanias();
       },
       error: (error: { error?: { message?: string } }) => {
         this.saving.set(false);
@@ -702,6 +785,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
         this.messages.add({ severity: "success", summary: "Campaña iniciada" });
         this.ultimaCampaniaCreada.set(null);
         this.resetForm();
+        this.loadCampanias();
       },
       error: (error: { error?: { message?: string } }) => {
         this.starting.set(false);
@@ -724,6 +808,34 @@ export class CampaignsJerarquicoComponent implements OnInit {
       next: (items) => this.recurrentesJerarquia.set(items.filter((item) => item.sourceType === "JERARQUIA")),
       error: () => this.recurrentesJerarquia.set([]),
     });
+  }
+
+  loadCampanias(): void {
+    this.loadingCampanias.set(true);
+    this.api.campaigns().subscribe({
+      next: (items) => {
+        this.loadingCampanias.set(false);
+        this.campanias.set([...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      },
+      error: () => {
+        this.loadingCampanias.set(false);
+        this.campanias.set([]);
+      },
+    });
+  }
+
+  campaignStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      DRAFT: "BORRADOR",
+      PREPARING: "PREPARANDO",
+      RUNNING: "EN EJECUCIÓN",
+      PAUSED: "PAUSADA",
+      PAUSED_BY_CIRCUIT_BREAKER: "PAUSADA POR SEGURIDAD",
+      COMPLETED: "COMPLETADA",
+      COMPLETED_WITH_ERRORS: "COMPLETADA CON ERRORES",
+      CANCELLED: "CANCELADA",
+    };
+    return labels[status] ?? status;
   }
 
   intervalLabel(minutes: number): string {
