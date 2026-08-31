@@ -31,6 +31,7 @@ export interface CampaignContactValidationResult {
 export interface CampaignRecord {
   id: string;
   name: string;
+  jerarquiaResumen?: string;
   status: string;
   totalMessages: number;
   sentMessages: number;

@@ -24,6 +24,7 @@ export const campaignContactSchema = z.object({
 
 const campaignCreateSchema = z.object({
   name: z.string().min(2).max(150),
+  jerarquiaResumen: z.string().max(500).optional(),
   sessionIds: z.array(z.string().uuid()).min(1),
   contacts: z.array(campaignContactSchema).min(1).max(50000),
   message: z.object({ text: z.string().max(4096), caption: z.string().max(1024).optional() }),

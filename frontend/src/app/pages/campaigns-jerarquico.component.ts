@@ -364,12 +364,19 @@ import {
           <div class="recurring-table-wrap">
             <table class="recurring-table">
               <thead>
-                <tr><th>Nombre</th><th>Estado</th><th>Destinatarios</th><th>Enviados</th><th>Fallidos</th><th>Creada</th></tr>
+                <tr><th>Nombre</th><th>Jerarquía</th><th>Estado</th><th>Destinatarios</th><th>Enviados</th><th>Fallidos</th><th>Creada</th></tr>
               </thead>
               <tbody>
                 @for (campania of campanias(); track campania.id) {
                   <tr>
                     <td>{{ campania.name }}</td>
+                    <td>
+                      @if (campania.jerarquiaResumen) {
+                        <span class="jerarquia-tag">{{ campania.jerarquiaResumen }}</span>
+                      } @else {
+                        <span class="muted small">—</span>
+                      }
+                    </td>
                     <td><span class="status-pill" [class.paused]="campania.status === 'PAUSED'">{{ campaignStatusLabel(campania.status) }}</span></td>
                     <td>{{ campania.totalMessages }}</td>
                     <td>{{ campania.sentMessages }}</td>
@@ -430,6 +437,7 @@ import {
     .recurring-form{grid-template-columns:auto auto 1fr;align-items:center;gap:.6rem .9rem}
     .recurring-form select{max-width:220px}
     .recurring-form .contact-help{grid-column:1/-1}
+    .jerarquia-tag{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:7px;padding:.2rem .5rem;font-size:.72rem;font-weight:600;max-width:260px;white-space:normal}
     .recurring-table-wrap{overflow-x:auto;margin-top:1rem}
     .recurring-table{width:100%;border-collapse:collapse;font-size:.85rem}
     .recurring-table th{text-align:left;color:#64748b;font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;padding:.4rem .6rem;border-bottom:1px solid #e2e8f0}
@@ -503,6 +511,25 @@ export class CampaignsJerarquicoComponent implements OnInit {
 
   readonly movilizadorOptions = computed<{ id: number; label: string }[]>(() =>
     this.movilizadoresVisibles().map((m) => ({ id: m.idUsuario, label: `${m.nombreCompleto} (${m.totalPersonas} personas)` })));
+
+  /** Resumen legible de la jerarquía elegida en "1. Elegí a quién" (para dejar rastro en la campaña creada). */
+  readonly resumenJerarquiaSeleccion = computed<string>(() => {
+    const partes: string[] = [];
+    const nombresElegidos = (opciones: { id: number; label: string }[], ids: number[]) =>
+      opciones.filter((o) => ids.includes(o.id)).map((o) => o.label.split(" — ")[0].split(" (")[0]);
+
+    const territorios = nombresElegidos(this.territorioOptions(), this.territorioIds());
+    if (territorios.length) partes.push(`Territorio: ${territorios.join(", ")}`);
+    const administradores = nombresElegidos(this.administradorOptions(), this.administradorIds());
+    if (administradores.length) partes.push(`Administrador: ${administradores.join(", ")}`);
+    const gerentes = nombresElegidos(this.gerenteOptions(), this.gerenteIds());
+    if (gerentes.length) partes.push(`Gerente: ${gerentes.join(", ")}`);
+    const movilizadores = nombresElegidos(this.movilizadorOptions(), this.movilizadorIds());
+    if (movilizadores.length) partes.push(`Movilizador: ${movilizadores.join(", ")}`);
+
+    const resumen = partes.join(" · ");
+    return resumen.length > 500 ? `${resumen.slice(0, 497)}...` : resumen;
+  });
 
   readonly loadingContactos = signal(false);
   readonly contactosResult = signal<Voto1x10ContactosResult | null>(null);
@@ -758,6 +785,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
     this.saving.set(true);
     this.api.createCampaign({
       name: this.name.trim(),
+      jerarquiaResumen: this.resumenJerarquiaSeleccion() || undefined,
       sessionIds: this.selectedSessionIds(),
       contacts,
       message: { text: this.messageText },

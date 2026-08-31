@@ -142,6 +142,7 @@ export class CampaignService {
     tenantId: string;
     ownerUserId: string;
     name: string;
+    jerarquiaResumen?: string;
     sessionIds: string[];
     contacts: CampaignContactInput[];
     message: CampaignMessagePayload;
@@ -171,6 +172,7 @@ export class CampaignService {
         tenantId: input.tenantId,
         ownerUserId: input.ownerUserId,
         name: input.name.trim(),
+        jerarquiaResumen: input.jerarquiaResumen?.trim() || undefined,
         sessionIds: [...new Set(input.sessionIds)],
         contacts: prepared.contacts,
         message: input.message,

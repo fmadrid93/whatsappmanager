@@ -4,6 +4,7 @@ export interface CampaignRecord {
   id: string;
   tenantId: string;
   name: string;
+  jerarquiaResumen?: string;
   status: string;
   mediaAssetId?: string;
   messagePayload: Buffer;
@@ -23,6 +24,7 @@ export interface CreateCampaignInput {
   tenantId: string;
   ownerUserId: string;
   name: string;
+  jerarquiaResumen?: string;
   sessionIds: string[];
   contacts: Array<{ name?: string; raw: string; e164: string; variables: Record<string, string> }>;
   message: CampaignMessagePayload;

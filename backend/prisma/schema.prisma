@@ -276,6 +276,7 @@ model Campaign {
   flowId         String?   @db.UniqueIdentifier
   mediaAssetId   String?   @db.UniqueIdentifier
   name           String    @db.NVarChar(191)
+  jerarquiaResumen String? @db.NVarChar(500)
   status         String    @default("DRAFT") @db.NVarChar(191)
   messagePayload Bytes
   scheduledAt    DateTime?
