@@ -619,26 +619,51 @@ export function createRoutes(container: AppContainer): Router {
             isBotActive: false,
           },
         });
-      } else if (["DELETED", "LOGGED_OUT", "QUARANTINED", "PAIRING_FAILED", "DISCONNECTED"].includes(session.status)) {
-        await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
-        await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
-        await container.prisma.whatsAppSession.update({
-          where: { id: session.id },
-          data: {
-            status: "STARTING",
-            pairingMethod: "QR",
-            qrCode: null,
-            pairingCode: null,
-            phoneE164: null,
-            whatsappJid: null,
-            lastConnectionError: null,
-            leaseOwner: null,
-            leaseExpiresAt: null,
-          },
-        });
+      } else {
+        const isConn = (session.status === "CONNECTED" || session.status === "WORKING") && Boolean(session.whatsappJid);
+        if (!isConn) {
+          const needsReset = session.pairingMethod !== "QR" ||
+            !session.qrCode ||
+            ["DELETED", "LOGGED_OUT", "QUARANTINED", "PAIRING_FAILED", "DISCONNECTED", "CONNECTING", "PAIRING_CODE"].includes(session.status);
+
+          if (needsReset) {
+            try {
+              await container.whatsapp?.sessionGateway?.stop(session.id);
+            } catch {}
+            try {
+              await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
+              await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
+            } catch {}
+            await container.prisma.whatsAppSession.update({
+              where: { id: session.id },
+              data: {
+                status: "STARTING",
+                pairingMethod: "QR",
+                qrCode: null,
+                pairingCode: null,
+                phoneE164: null,
+                whatsappJid: null,
+                lastConnectionError: null,
+                leaseOwner: null,
+                leaseExpiresAt: null,
+              },
+            });
+          }
+        }
       }
 
-      const freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+      let freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+      const isConnectedInitial = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
+
+      // Si no tiene QR y no está conectada, esperar unos segundos a que el worker emita el QR
+      if (!freshSession?.qrCode && !isConnectedInitial) {
+        for (let i = 0; i < 12; i++) {
+          await sleep(500);
+          freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+          if (freshSession?.qrCode || freshSession?.whatsappJid) break;
+        }
+      }
+
       const isConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
       const qrDataUrl = freshSession?.qrCode ? await QRCode.toDataURL(freshSession.qrCode, { width: 360, margin: 2 }) : null;
       const qrPngBase64 = qrDataUrl ? qrDataUrl.replace(/^data:image\/png;base64,/, "") : null;
