@@ -539,8 +539,12 @@ export function createRoutes(container: AppContainer): Router {
         },
       });
     } else {
+      if (session.pairingCode && session.expectedPhoneE164 === phone && session.status === "PAIRING_CODE") {
+        return response.json({ ok: true, code: session.pairingCode, sessionId: session.id, name: session.name });
+      }
+
       try {
-        await container.whatsapp.sessionGateway.stop(session.id);
+        await container.whatsapp?.sessionGateway?.stop(session.id);
       } catch {}
       try {
         await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
@@ -561,8 +565,8 @@ export function createRoutes(container: AppContainer): Router {
       });
     }
 
-    // Esperar a que el Worker genere el código de emparejamiento (hasta 30s)
-    for (let i = 0; i < 60; i++) {
+    // Esperar a que el Worker genere el código de emparejamiento (hasta 35s)
+    for (let i = 0; i < 70; i++) {
       await sleep(500);
       const fresh = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
       if (fresh?.pairingCode) {
@@ -781,7 +785,7 @@ export function createRoutes(container: AppContainer): Router {
         }
 
 
-        const fresh = session || (await container.prisma.whatsAppSession.findUnique({ where: { id: sessionId } }));
+        const fresh = session || (await resolveSession(sessionId));
         if (!fresh) {
           return response.status(404).json({ error: "Sesión no encontrada" });
         }

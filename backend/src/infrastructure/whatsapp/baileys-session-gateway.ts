@@ -170,10 +170,16 @@ export class BaileysSessionGateway implements ISessionGateway {
 
 
       if (!state.creds.registered && session.pairingMethod === "CODE" && session.expectedPhoneE164) {
-        try {
-          await this.generatePairingCode(sessionId, socket, session.expectedPhoneE164);
-        } catch (error) {
-          logger.error({ error, sessionId }, "Error al generar código de emparejamiento en start()");
+        // Solo solicitar pairing code si aún no tenemos uno vigente generado en BD
+        const fresh = await this.sessions.findById(sessionId);
+        if (!fresh?.pairingCode) {
+          try {
+            await this.generatePairingCode(sessionId, socket, session.expectedPhoneE164);
+          } catch (error) {
+            logger.error({ error, sessionId }, "Error al generar código de emparejamiento en start()");
+          }
+        } else {
+          logger.info({ sessionId, code: fresh.pairingCode }, "Pairing code ya existente en BD, conservando código.");
         }
       }
     } finally {
@@ -230,9 +236,11 @@ export class BaileysSessionGateway implements ISessionGateway {
     if (digits.length < 8) throw new Error("Configura un número válido para generar el código de vinculación.");
 
     let lastError: unknown = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Dar margen para que el handshake WebSocket inicial de Baileys esté conectado
+    await sleep(2000);
+
+    for (let attempt = 1; attempt <= 5; attempt++) {
       try {
-        await sleep(1000 * attempt);
         logger.info({ sessionId, digits, attempt }, "Solicitando código de emparejamiento a WhatsApp Baileys...");
         const code = await socket.requestPairingCode(digits);
         await this.sessions.savePairingCode(sessionId, code);
@@ -241,6 +249,7 @@ export class BaileysSessionGateway implements ISessionGateway {
       } catch (err) {
         lastError = err;
         logger.warn({ sessionId, attempt, err }, "Fallo temporal al solicitar pairing code; reintentando...");
+        await sleep(1500);
       }
     }
     throw lastError || new Error("No se pudo generar el código de emparejamiento");
@@ -351,7 +360,6 @@ export class BaileysSessionGateway implements ISessionGateway {
                 lastConnectionError: null,
                 lastConnectionAt: new Date(),
               });
-              this.scheduleRestartRequired(sessionId);
             } else {
               await this.authRepository.clearSession(sessionId);
               await this.sessions.updateStatus(sessionId, "LOGGED_OUT", {
