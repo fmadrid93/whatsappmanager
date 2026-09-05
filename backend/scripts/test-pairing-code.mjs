@@ -1,12 +1,14 @@
 import http from "node:http";
 
-const data = JSON.stringify({ phone: "+595972686891" });
+const phone = process.argv[2] || "+595986125168";
+const session = process.argv[3] || "asuncion_gerente_fmadridgerente_linea2";
+const data = JSON.stringify({ phone });
 
 const req = http.request(
   {
     hostname: "127.0.0.1",
     port: 3000,
-    path: "/sessions/asuncion_movil_fmadridmovilizador_linea1/pairing-code",
+    path: `/sessions/${session}/pairing-code`,
     method: "POST",
     headers: {
       "Content-Type": "application/json",

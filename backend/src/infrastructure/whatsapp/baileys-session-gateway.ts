@@ -172,7 +172,9 @@ export class BaileysSessionGateway implements ISessionGateway {
       if (!state.creds.registered && session.pairingMethod === "CODE" && session.expectedPhoneE164) {
         try {
           await this.generatePairingCode(sessionId, socket, session.expectedPhoneE164);
-        } catch {}
+        } catch (error) {
+          logger.error({ error, sessionId }, "Error al generar código de emparejamiento en start()");
+        }
       }
     } finally {
       this.startingSessions.delete(sessionId);
@@ -226,11 +228,22 @@ export class BaileysSessionGateway implements ISessionGateway {
   private async generatePairingCode(sessionId: string, socket: WASocket, phoneE164?: string): Promise<string> {
     const digits = String(phoneE164 ?? "").replace(/\D/g, "");
     if (digits.length < 8) throw new Error("Configura un número válido para generar el código de vinculación.");
-    await sleep(1200);
-    const code = await socket.requestPairingCode(digits);
-    await this.sessions.savePairingCode(sessionId, code);
-    logger.info({ sessionId }, "Código de vinculación actualizado.");
-    return code;
+
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await sleep(1000 * attempt);
+        logger.info({ sessionId, digits, attempt }, "Solicitando código de emparejamiento a WhatsApp Baileys...");
+        const code = await socket.requestPairingCode(digits);
+        await this.sessions.savePairingCode(sessionId, code);
+        logger.info({ sessionId, code }, "¡Código de vinculación generado exitosamente!");
+        return code;
+      } catch (err) {
+        lastError = err;
+        logger.warn({ sessionId, attempt, err }, "Fallo temporal al solicitar pairing code; reintentando...");
+      }
+    }
+    throw lastError || new Error("No se pudo generar el código de emparejamiento");
   }
 
   private scheduleRestartRequired(sessionId: string): void {
@@ -262,8 +275,11 @@ export class BaileysSessionGateway implements ISessionGateway {
     socket.ev.on("connection.update", async (update) => {
       try {
         if (update.qr) {
-          await this.sessions.saveQr(sessionId, update.qr);
-          logger.info({ sessionId }, "QR actualizado.");
+          const s = await this.sessions.findById(sessionId);
+          if (s?.pairingMethod !== "CODE") {
+            await this.sessions.saveQr(sessionId, update.qr);
+            logger.info({ sessionId }, "QR actualizado.");
+          }
         }
 
         if (update.connection === "open") {
@@ -327,20 +343,31 @@ export class BaileysSessionGateway implements ISessionGateway {
               "Socket cerrado por cuarentena; se conserva el estado QUARANTINED.",
             );
           } else if (loggedOut) {
-            await this.authRepository.clearSession(sessionId);
-            await this.sessions.updateStatus(sessionId, "LOGGED_OUT", {
-              disconnectReason: "loggedOut",
-              disconnectedAt: new Date(),
-              lastConnectionCode: statusCode ?? 401,
-              lastConnectionError: connectionError,
-              lastConnectionAt: new Date(),
-              whatsappJid: null,
-              phoneE164: null,
-              clearQr: true,
-              clearPairingCode: true,
-            });
-            await this.failover.handleLoggedOut(sessionId);
-            await this.sessions.releaseLease(sessionId, this.workerId);
+            // Si la sesión está en proceso de emparejamiento por código, el cierre es transitorio de Baileys mientras el usuario ingresa el código en su móvil
+            if (currentSession?.pairingMethod === "CODE" && !currentSession?.whatsappJid) {
+              logger.info({ sessionId, statusCode }, "Cierre de socket durante emparejamiento por código; manteniendo pairingCode activo.");
+              await this.sessions.updateStatus(sessionId, "PAIRING_CODE", {
+                lastConnectionCode: statusCode ?? 401,
+                lastConnectionError: null,
+                lastConnectionAt: new Date(),
+              });
+              this.scheduleRestartRequired(sessionId);
+            } else {
+              await this.authRepository.clearSession(sessionId);
+              await this.sessions.updateStatus(sessionId, "LOGGED_OUT", {
+                disconnectReason: "loggedOut",
+                disconnectedAt: new Date(),
+                lastConnectionCode: statusCode ?? 401,
+                lastConnectionError: connectionError,
+                lastConnectionAt: new Date(),
+                whatsappJid: null,
+                phoneE164: null,
+                clearQr: true,
+                clearPairingCode: true,
+              });
+              await this.failover.handleLoggedOut(sessionId);
+              await this.sessions.releaseLease(sessionId, this.workerId);
+            }
 
           } else if (pairingRejected) {
             await this.sessions.updateStatus(sessionId, "PAIRING_FAILED", {

@@ -539,6 +539,13 @@ export function createRoutes(container: AppContainer): Router {
         },
       });
     } else {
+      try {
+        await container.whatsapp.sessionGateway.stop(session.id);
+      } catch {}
+      try {
+        await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
+        await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
+      } catch {}
       await container.prisma.whatsAppSession.update({
         where: { id: session.id },
         data: {
@@ -554,8 +561,8 @@ export function createRoutes(container: AppContainer): Router {
       });
     }
 
-    // Esperar a que el Worker genere el código de emparejamiento
-    for (let i = 0; i < 20; i++) {
+    // Esperar a que el Worker genere el código de emparejamiento (hasta 30s)
+    for (let i = 0; i < 60; i++) {
       await sleep(500);
       const fresh = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
       if (fresh?.pairingCode) {
