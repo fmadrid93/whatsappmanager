@@ -1,4 +1,4 @@
-﻿import type { ISessionRepository } from "../application/ports/repositories/session.repository.js";
+import type { ISessionRepository } from "../application/ports/repositories/session.repository.js";
 import type { IWhatsAppSocketRegistry } from "../application/ports/whatsapp/socket-registry.js";
 import type { ISessionGateway } from "../application/ports/whatsapp/session-gateway.js";
 import { logger } from "../shared/logger/logger.js";
@@ -49,8 +49,8 @@ export class SessionSupervisor {
 
       for (const sessionId of this.registry.ids()) {
         const owned = await this.sessions.findById(sessionId);
-        if (!owned || !owns(owned.id, owned.shardKey)) {
-          logger.info({ sessionId, shardId: this.shardId }, "La sesión será drenada hacia otro shard.");
+        if (!owned || !owns(owned.id, owned.shardKey) || owned.status === "STARTING" || owned.status === "DISCONNECTED" || owned.status === "DELETED") {
+          logger.info({ sessionId, status: owned?.status }, "Deteniendo socket en memoria para sincronizar con nuevo estado de BD.");
           await this.gateway.stop(sessionId);
           await this.sessions.releaseLease(sessionId, this.workerId);
           continue;
