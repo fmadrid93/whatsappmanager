@@ -1,10 +1,11 @@
-﻿import crypto from "node:crypto";
+import crypto from "node:crypto";
 import { getContentType, proto, type WAMessage, type WASocket } from "@whiskeysockets/baileys";
 import type { IConversationRepository, ConversationRecord } from "../ports/repositories/conversation.repository.js";
 import type { ISessionRepository } from "../ports/repositories/session.repository.js";
 import type { BotFlowRecord, BotFlowStep, IBotFlowRepository } from "../ports/repositories/bot-flow.repository.js";
 import type { IExternalConnectorExecutor } from "../ports/integrations/external-connector.executor.js";
 import type { IWhatsAppMessageRepository } from "../ports/repositories/whatsapp-message.repository.js";
+import type { Voto1x10Client } from "../../infrastructure/voto1x10/voto1x10-client.js";
 import { randomBetween, sleep } from "../../shared/utils/delay.js";
 import { logger } from "../../shared/logger/logger.js";
 
@@ -211,6 +212,7 @@ export class InboundMessageService {
     private readonly defaultReply: string,
     timing: InboundMessageTiming = {},
     private readonly externalConnectors?: IExternalConnectorExecutor,
+    private readonly voto1x10Client?: Voto1x10Client | null,
   ) {
     this.wait = timing.delay ?? sleep;
     this.nextDelayMs = timing.nextDelayMs ?? (() => randomBetween(2000, 4000));
@@ -312,6 +314,23 @@ export class InboundMessageService {
       variables.celular = boliviaLocalCell;
       variables.celular_internacional = phoneDigits;
       variables.telefono_e164 = `+${phoneDigits}`;
+
+      if (this.voto1x10Client) {
+        try {
+          const syncResult = await this.voto1x10Client.procesarRespuestaBot(phoneDigits, text);
+          if (syncResult) {
+            if (syncResult.nombreVotante) {
+              variables.nombre = syncResult.nombreVotante;
+              variables.nombre_votante = syncResult.nombreVotante;
+            }
+            if (syncResult.estadoApoyoAsignado) {
+              variables.estado_apoyo = syncResult.estadoApoyoAsignado;
+            }
+          }
+        } catch (error) {
+          logger.warn({ error, phoneDigits, text }, "No se pudo sincronizar respuesta de bot con 1x10 API.");
+        }
+      }
     }
 
     // EXACT y CONTAINS se comportan como comandos globales. Esto permite que "recinto"

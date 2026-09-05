@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, computed, inject, signal } from "@angular/core";
+import { Component, OnInit, computed, inject, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { ButtonModule } from "primeng/button";
 import { CardModule } from "primeng/card";
@@ -182,6 +182,7 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
           <p-button label="Ejemplo básico" icon="pi pi-sparkles" severity="secondary" (onClick)="loadExample()" />
           <p-button label="Ejemplo multinivel" icon="pi pi-sitemap" severity="help" (onClick)="loadMultilevelExample()" />
           <p-button label="Generar flujo recinto por celular + API" icon="pi pi-cloud" severity="success" (onClick)="loadMeetingApiExample()" />
+          <p-button label="Plantilla Encuesta / Confirmación PLRA" icon="pi pi-check-square" severity="warn" (onClick)="loadPlraConfirmationExample()" />
           @if (editingFlowId()) {
             <p-button label="Cancelar edición" icon="pi pi-times" severity="secondary" (onClick)="cancelEdit()" />
           }
@@ -1264,6 +1265,41 @@ export class FlowsComponent implements OnInit {
       summary: "Conector asignado",
       detail: `Consulta de recinto: ${lookupConnector.name}. Se enviará automáticamente {{celular}}; en Bolivia se quitará el prefijo 591.`,
     });
+  }
+
+  loadPlraConfirmationExample(): void {
+    const stepApoya = {
+      ...newStep("END"),
+      text: "¡Excelente {{nombre}}! Muchísimas gracias por sumarte al equipo del PLRA. Te mantendremos informado de todas las actividades. ¡Juntos lograremos la victoria!",
+    };
+
+    const stepNoApoya = {
+      ...newStep("END"),
+      text: "Entendido {{nombre}}, disculpa la molestia. Hemos actualizado tu registro en el sistema para no enviarte más mensajes. ¡Que tengas un excelente día!",
+    };
+
+    const stepMenu = {
+      ...newStep("MENU"),
+      text: "¡Hola, {{nombre}}! 👋 Te escribimos del equipo del PLRA.\nUno de nuestros coordinadores nos pasó tu contacto porque nos comentó que tienes interés en apoyar nuestro proyecto político.\n🗳️ Queremos confirmar si es así para mantenerte al tanto de las actividades o si hubo algún error en el registro. ¿Nos apoyas?\n\nPor favor, responde seleccionando una opción:\n1️⃣ Sí, quiero apoyar (para registrarte formalmente)\n2️⃣ No me interesa / Fue un error",
+      variable: "respuesta_apoyo",
+      invalidText: "Opción no válida. Por favor responde con 1 (Sí) o 2 (No).",
+      options: [
+        { value: "1", label: "1️⃣ Sí, quiero apoyar", nextStepId: stepApoya.id },
+        { value: "2", label: "2️⃣ No me interesa / Fue un error", nextStepId: stepNoApoya.id },
+      ],
+    };
+
+    const example: EditableStep[] = [
+      stepMenu,
+      stepApoya,
+      stepNoApoya,
+    ];
+
+    this.loadExampleIntoEditor(
+      "Encuesta de Confirmación PLRA",
+      "Flujo de confirmación con 2 opciones para registrar votantes comprometidos o desmarcar errores y actualizar automáticamente la base de datos.",
+      example,
+    );
   }
 
   private loadExampleIntoEditor(name: string, description: string, example: EditableStep[]): void {

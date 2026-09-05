@@ -47,6 +47,14 @@ export interface Voto1x10PersonaRepetida {
   totalRepeticiones: number;
 }
 
+export interface Voto1x10BotRespuestaResult {
+  reconocido: boolean;
+  idPersonaMovilizada?: number;
+  nombreVotante?: string;
+  estadoApoyoAsignado?: string;
+  mensajeRespuesta?: string;
+}
+
 interface ApiEnvelope<T> {
   exito: number;
   dato?: T;
@@ -127,5 +135,27 @@ export class Voto1x10Client {
     if (params.idUsuarioMovilizador !== undefined) query.set("idUsuarioMovilizador", String(params.idUsuarioMovilizador));
     const suffix = query.toString();
     return this.get<Voto1x10PersonaRepetida[]>(`/api/PersonaMovilizada/celulares-repetidos${suffix ? `?${suffix}` : ""}`);
+  }
+
+  async procesarRespuestaBot(
+    celular: string,
+    textoRespuesta: string,
+    idTerritorio?: number,
+  ): Promise<Voto1x10BotRespuestaResult | null> {
+    const token = await this.getToken();
+    const response = await fetch(`${this.baseUrl}/api/WhatsApp/bot/procesar-respuesta`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ celular, textoRespuesta, idTerritorio }),
+    });
+
+    const body = (await response.json().catch(() => ({}))) as ApiEnvelope<Voto1x10BotRespuestaResult>;
+    if (!response.ok || body.exito !== 1) {
+      return null;
+    }
+    return body.dato ?? null;
   }
 }

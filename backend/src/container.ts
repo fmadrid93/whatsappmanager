@@ -146,10 +146,11 @@ export function buildContainer() {
     cryptoBox,
     env.NODE_ENV !== "production",
   );
-  const voto1x10HierarchyService = env.VOTO1X10_API_BASE_URL && env.VOTO1X10_SERVICE_USERNAME && env.VOTO1X10_SERVICE_PASSWORD
-    ? new Voto1x10HierarchyService(
-        new Voto1x10Client(env.VOTO1X10_API_BASE_URL, env.VOTO1X10_SERVICE_USERNAME, env.VOTO1X10_SERVICE_PASSWORD),
-      )
+  const voto1x10Client = env.VOTO1X10_API_BASE_URL && env.VOTO1X10_SERVICE_USERNAME && env.VOTO1X10_SERVICE_PASSWORD
+    ? new Voto1x10Client(env.VOTO1X10_API_BASE_URL, env.VOTO1X10_SERVICE_USERNAME, env.VOTO1X10_SERVICE_PASSWORD)
+    : null;
+  const voto1x10HierarchyService = voto1x10Client
+    ? new Voto1x10HierarchyService(voto1x10Client)
     : null;
   const recurringCampaignService = new RecurringCampaignService(
     recurringCampaigns,
@@ -168,6 +169,7 @@ export function buildContainer() {
     env.DEFAULT_AUTO_REPLY,
     {},
     externalConnectorService,
+    voto1x10Client,
   );
   const mediaReuseService = new MediaReuseService(
     mediaAssets,
