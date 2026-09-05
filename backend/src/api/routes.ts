@@ -539,7 +539,7 @@ export function createRoutes(container: AppContainer): Router {
         },
       });
     } else {
-      if (session.pairingCode && session.expectedPhoneE164 === phone && session.status === "PAIRING_CODE") {
+      if (session.pairingCode && session.expectedPhoneE164 === phone) {
         return response.json({ ok: true, code: session.pairingCode, sessionId: session.id, name: session.name });
       }
 
@@ -622,11 +622,11 @@ export function createRoutes(container: AppContainer): Router {
       } else {
         const isConn = (session.status === "CONNECTED" || session.status === "WORKING") && Boolean(session.whatsappJid);
         if (!isConn) {
-          const needsReset = session.pairingMethod !== "QR" ||
-            !session.qrCode ||
-            ["DELETED", "LOGGED_OUT", "QUARANTINED", "PAIRING_FAILED", "DISCONNECTED", "CONNECTING", "PAIRING_CODE"].includes(session.status);
+          const isDeadOrDifferentMethod =
+            session.pairingMethod !== "QR" ||
+            ["DELETED", "LOGGED_OUT", "PAIRING_FAILED"].includes(session.status);
 
-          if (needsReset) {
+          if (isDeadOrDifferentMethod) {
             try {
               await container.whatsapp?.sessionGateway?.stop(session.id);
             } catch {}
