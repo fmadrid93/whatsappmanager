@@ -371,15 +371,14 @@ export function createRoutes(container: AppContainer): Router {
         const userNameParam = (request.query.username || request.query.user) ? String(request.query.username || request.query.user).trim() : null;
         const sessionNameParam = request.query.session ? String(request.query.session).trim() : null;
         const roleParam = request.query.role ? String(request.query.role).trim().toLowerCase() : null;
-        const hasQuery = Boolean(userIdParam || userNameParam || sessionNameParam);
+        const allSessionsParam = request.query.all === "true" || request.query.all === "1";
+        const hasQuery = Boolean(userIdParam || userNameParam || sessionNameParam || roleParam);
 
         let whereClause: any = {
           status: { notIn: ["DELETED", "LOGGED_OUT"] },
         };
 
-        const isElevatedRole = Boolean(roleParam && (roleParam.includes("admin") || roleParam.includes("gerent")));
-
-        if (!isElevatedRole) {
+        if (!allSessionsParam) {
           if (sessionNameParam) {
             whereClause.OR = [
               { name: sessionNameParam },
@@ -387,6 +386,14 @@ export function createRoutes(container: AppContainer): Router {
             ];
           } else if (userIdParam || userNameParam) {
             const orConditions: any[] = [];
+            if (userNameParam) {
+              orConditions.push(
+                { name: { contains: `_${userNameParam}_` } },
+                { name: { contains: `_${userNameParam}` } },
+                { name: { startsWith: `${userNameParam}_` } },
+                { name: { contains: userNameParam } },
+              );
+            }
             if (userIdParam) {
               const prefix = userIdParam.startsWith("u") ? `${userIdParam}_` : `u${userIdParam}_`;
               orConditions.push(
@@ -394,13 +401,6 @@ export function createRoutes(container: AppContainer): Router {
                 { name: { contains: `_${prefix}` } },
                 { name: { contains: `_${userIdParam}_` } },
                 { name: { contains: `_u${userIdParam}_` } },
-                { name: { contains: userIdParam } },
-              );
-            }
-            if (userNameParam) {
-              orConditions.push(
-                { name: { contains: userNameParam } },
-                { name: { contains: `_${userNameParam}_` } },
               );
             }
             whereClause.OR = orConditions;
@@ -435,7 +435,7 @@ export function createRoutes(container: AppContainer): Router {
   );
 
   router.post(
-    "/sessions",
+    ["/sessions", "/session/:id/start", "/sessions/:id/start"],
     asyncHandler(async (request, response) => {
       const body = request.body || {};
       let tenant = await container.prisma.tenant.findFirst();
@@ -457,9 +457,27 @@ export function createRoutes(container: AppContainer): Router {
         });
       }
 
-      const name = String(body.name || `sesion_${Date.now()}`);
+      const name = String(request.params.id || body.name || `sesion_${Date.now()}`);
       const pairingMethod = body.pairingMethod === "CODE" ? "CODE" : "QR";
       const expectedPhoneE164 = body.expectedPhoneE164 ? String(body.expectedPhoneE164) : null;
+
+      let session = await container.prisma.whatsAppSession.findFirst({
+        where: { name },
+      });
+
+      if (session) {
+        if (session.status === "DELETED" || session.status === "LOGGED_OUT" || session.status === "DISCONNECTED") {
+          session = await container.prisma.whatsAppSession.update({
+            where: { id: session.id },
+            data: {
+              status: "STARTING",
+              pairingMethod,
+              deletedAt: null,
+            },
+          });
+        }
+        return response.status(200).json(session);
+      }
 
       const created = await container.prisma.whatsAppSession.create({
         data: {
@@ -556,15 +574,41 @@ export function createRoutes(container: AppContainer): Router {
   router.post("/sessions/:id/pairing-code", handlePairingCode);
 
   router.get(
-    "/sessions/:id/qr",
+    ["/sessions/:id/qr", "/session/:id/qr"],
     asyncHandler(async (request, response) => {
       const identifier = String(request.params.id);
-      const session = await resolveSession(identifier);
+      let session = await resolveSession(identifier);
       if (!session) {
-        return response.status(404).json({ error: "Sesión no encontrada" });
-      }
-
-      if (["DELETED", "LOGGED_OUT", "QUARANTINED", "PAIRING_FAILED", "DISCONNECTED"].includes(session.status)) {
+        let tenant = await container.prisma.tenant.findFirst();
+        if (!tenant) {
+          tenant = await container.prisma.tenant.create({
+            data: { name: "Tenant Campaña", status: "ACTIVE" },
+          });
+        }
+        let user = await container.prisma.appUser.findFirst();
+        if (!user) {
+          user = await container.prisma.appUser.create({
+            data: {
+              tenantId: tenant.id,
+              email: "admin@campana.local",
+              displayName: "Admin Campaña",
+              passwordHash: "system",
+              role: "TENANT_ADMIN",
+            },
+          });
+        }
+        session = await container.prisma.whatsAppSession.create({
+          data: {
+            tenantId: tenant.id,
+            ownerUserId: user.id,
+            name: identifier,
+            pairingMethod: "QR",
+            status: "STARTING",
+            shardKey: 1,
+            isBotActive: false,
+          },
+        });
+      } else if (["DELETED", "LOGGED_OUT", "QUARANTINED", "PAIRING_FAILED", "DISCONNECTED"].includes(session.status)) {
         await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.whatsAppSession.update({
@@ -583,15 +627,16 @@ export function createRoutes(container: AppContainer): Router {
         });
       }
 
-
       const freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
       const isConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
       const qrDataUrl = freshSession?.qrCode ? await QRCode.toDataURL(freshSession.qrCode, { width: 360, margin: 2 }) : null;
+      const qrPngBase64 = qrDataUrl ? qrDataUrl.replace(/^data:image\/png;base64,/, "") : null;
 
       response.json({
         available: Boolean(freshSession?.qrCode) && !isConnected,
         connected: isConnected,
         qr: qrDataUrl ?? "",
+        qrPngBase64: isConnected ? null : qrPngBase64,
         qrCode: isConnected ? null : (freshSession?.qrCode ?? null),
         status: freshSession?.status ?? "STARTING",
       });
@@ -599,7 +644,7 @@ export function createRoutes(container: AppContainer): Router {
   );
 
   router.delete(
-    "/sessions/:id",
+    ["/sessions/:id", "/session/:id"],
     asyncHandler(async (request, response) => {
       const identifier = String(request.params.id);
       const session = await resolveSession(identifier);
@@ -621,7 +666,7 @@ export function createRoutes(container: AppContainer): Router {
   );
 
   router.patch(
-    "/sessions/:id/bot",
+    ["/sessions/:id/bot", "/session/:id/bot"],
     asyncHandler(async (request, response) => {
       const identifier = String(request.params.id);
       const session = await resolveSession(identifier);
@@ -636,8 +681,8 @@ export function createRoutes(container: AppContainer): Router {
     }),
   );
 
-  router.post(
-    ["/session/:id/reset", "/sessions/:id/reset", "/sessions/:id/relink"],
+  router.all(
+    ["/session/:id/reset", "/sessions/:id/reset", "/sessions/:id/relink", "/session/:id/relink"],
     asyncHandler(async (request, response) => {
       const identifier = String(request.params.id);
       const session = await resolveSession(identifier);
@@ -646,7 +691,6 @@ export function createRoutes(container: AppContainer): Router {
           await container.whatsapp.sessionGateway.stop(session.id);
         } catch {}
         await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
-
         await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.whatsAppSession.update({
           where: { id: session.id },
@@ -670,7 +714,6 @@ export function createRoutes(container: AppContainer): Router {
     }),
   );
 
-
   router.post(
     "/sessions/purge-old",
     asyncHandler(async (_request, response) => {
@@ -691,7 +734,7 @@ export function createRoutes(container: AppContainer): Router {
   );
 
   router.get(
-    "/session/:id/status",
+    ["/session/:id/status", "/sessions/:id/status"],
     asyncHandler(async (request, response) => {
       const identifier = String(request.params.id);
       const session = await resolveSession(identifier);
@@ -704,156 +747,6 @@ export function createRoutes(container: AppContainer): Router {
         state: isConnected ? "connected" : (session?.status?.toLowerCase() ?? "stopped"),
         me: isConnected ? (session?.phoneE164 ?? session?.whatsappJid?.split("@")[0] ?? null) : null,
       });
-    }),
-  );
-
-  router.post(
-    "/session/:id/start",
-    asyncHandler(async (request, response) => {
-      const identifier = String(request.params.id);
-      let session = await resolveSession(identifier);
-      if (!session) {
-        let tenant = await container.prisma.tenant.findFirst();
-        if (!tenant) {
-          tenant = await container.prisma.tenant.create({
-            data: { name: "Tenant Campaña", status: "ACTIVE" },
-          });
-        }
-        let user = await container.prisma.appUser.findFirst();
-        if (!user) {
-          user = await container.prisma.appUser.create({
-            data: {
-              tenantId: tenant.id,
-              email: "admin@campana.local",
-              displayName: "Admin Campaña",
-              passwordHash: "system",
-              role: "TENANT_ADMIN",
-            },
-          });
-        }
-        session = await container.prisma.whatsAppSession.create({
-          data: {
-            tenantId: tenant.id,
-            ownerUserId: user.id,
-            name: identifier,
-            pairingMethod: "QR",
-            status: "STARTING",
-            shardKey: 1,
-            isBotActive: false,
-          },
-        });
-      } else if (["DELETED", "LOGGED_OUT", "DISCONNECTED", "QUARANTINED", "PAIRING_FAILED"].includes(session.status)) {
-        await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
-        await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
-        await container.prisma.whatsAppSession.update({
-          where: { id: session.id },
-          data: {
-            status: "STARTING",
-            qrCode: null,
-            pairingCode: null,
-            phoneE164: null,
-            whatsappJid: null,
-            lastConnectionError: null,
-            leaseOwner: null,
-            leaseExpiresAt: null,
-          },
-        });
-      }
-      response.json({ ok: true, sessionId: session.id, name: session.name });
-    }),
-  );
-
-  router.get(
-    "/session/:id/qr",
-    asyncHandler(async (request, response) => {
-      const identifier = String(request.params.id);
-      let session = await resolveSession(identifier);
-
-      if (!session) {
-        let tenant = await container.prisma.tenant.findFirst();
-        if (!tenant) {
-          tenant = await container.prisma.tenant.create({
-            data: { name: "Tenant Campaña", status: "ACTIVE" },
-          });
-        }
-        let user = await container.prisma.appUser.findFirst();
-        if (!user) {
-          user = await container.prisma.appUser.create({
-            data: {
-              tenantId: tenant.id,
-              email: "admin@campana.local",
-              displayName: "Admin Campaña",
-              passwordHash: "system",
-              role: "TENANT_ADMIN",
-            },
-          });
-        }
-        session = await container.prisma.whatsAppSession.create({
-          data: {
-            tenantId: tenant.id,
-            ownerUserId: user.id,
-            name: identifier,
-            pairingMethod: "QR",
-            status: "STARTING",
-            shardKey: 1,
-            isBotActive: false,
-          },
-        });
-      } else if (["DELETED", "LOGGED_OUT", "DISCONNECTED", "QUARANTINED", "PAIRING_FAILED"].includes(session.status)) {
-        await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
-        await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
-        await container.prisma.whatsAppSession.update({
-          where: { id: session.id },
-          data: {
-            status: "STARTING",
-            pairingMethod: "QR",
-            qrCode: null,
-            pairingCode: null,
-            phoneE164: null,
-            whatsappJid: null,
-            lastConnectionError: null,
-            leaseOwner: null,
-            leaseExpiresAt: null,
-          },
-        });
-      }
-
-
-      // Re-consultar el registro para obtener el qrCode actualizado
-      const freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
-      const isConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
-      const qrDataUrl = freshSession?.qrCode ? await QRCode.toDataURL(freshSession.qrCode, { width: 360, margin: 2 }) : null;
-      const qrPngBase64 = qrDataUrl ? qrDataUrl.replace(/^data:image\/png;base64,/, "") : null;
-
-      response.json({
-        available: Boolean(freshSession?.qrCode) && !isConnected,
-        connected: isConnected,
-        qrPngBase64: isConnected ? null : qrPngBase64,
-        qrCode: isConnected ? null : (freshSession?.qrCode ?? null),
-        status: freshSession?.status ?? "STARTING",
-      });
-    }),
-  );
-
-  router.post(
-    "/session/:id/reset",
-    asyncHandler(async (request, response) => {
-      const identifier = String(request.params.id);
-      const session = await resolveSession(identifier);
-      if (session) {
-        try {
-          await container.whatsapp.sessionGateway.stop(session.id);
-        } catch {}
-        try {
-          await container.prisma.whatsAppSession.delete({ where: { id: session.id } });
-        } catch {
-          await container.prisma.whatsAppSession.update({
-            where: { id: session.id },
-            data: { status: "DELETED", qrCode: null, phoneE164: null },
-          });
-        }
-      }
-      response.json({ ok: true });
     }),
   );
 
