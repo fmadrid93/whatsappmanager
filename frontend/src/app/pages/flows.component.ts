@@ -179,34 +179,152 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
           <div class="muted">Diseña recorridos lineales o menús multinivel con destinos entre bloques.</div>
         </div>
         <div class="header-actions">
+          <p-button label="⚡ Bot Campaña: Confirmación Votantes + BD" icon="pi pi-bolt" severity="success" (onClick)="loadPlraConfirmationExample()" />
           <p-button label="Ejemplo básico" icon="pi pi-sparkles" severity="secondary" (onClick)="loadExample()" />
           <p-button label="Ejemplo multinivel" icon="pi pi-sitemap" severity="help" (onClick)="loadMultilevelExample()" />
-          <p-button label="Generar flujo recinto por celular + API" icon="pi pi-cloud" severity="success" (onClick)="loadMeetingApiExample()" />
-          <p-button label="Plantilla Encuesta / Confirmación PLRA" icon="pi pi-check-square" severity="warn" (onClick)="loadPlraConfirmationExample()" />
+          <p-button label="Flujo recinto por celular + API" icon="pi pi-cloud" severity="info" (onClick)="loadMeetingApiExample()" />
           @if (editingFlowId()) {
             <p-button label="Cancelar edición" icon="pi pi-times" severity="secondary" (onClick)="cancelEdit()" />
           }
           <p-button
-            [label]="editingFlowId() ? 'Guardar nueva versión' : 'Guardar flujo'"
+            [label]="editingFlowId() ? 'Guardar nueva versión' : 'Guardar y Habilitar Bot'"
             icon="pi pi-save"
+            severity="primary"
             [loading]="saving()"
             (onClick)="create()"
           />
         </div>
       </div>
 
-      <p-card header="Plantillas disponibles" styleClass="templates-gallery-card">
-        @if (templateFlows().length === 0) {
-          <div class="empty-templates">
-            <i class="pi pi-bookmark"></i>
-            <div>
-              <strong>Todavía no guardaste ninguna plantilla.</strong>
-              <div class="muted small">Armá un flujo abajo y usá el botón "Guardar como plantilla" en la fila de "Flujos registrados" para que aparezca acá y puedas reutilizarlo con un clic al crear un bot nuevo.</div>
+      <!-- Galería de Plantillas y Ejemplos de Bots Rápidos -->
+      <p-card header="⚡ Plantillas y Ejemplos de Bots Rápidos (Listos para Usar)" styleClass="templates-gallery-card">
+        <div class="muted" style="margin-bottom:1rem">
+          Elige un modelo preconfigurado para cargarlo en el editor, asignar las líneas telefónicas y habilitarlo con un solo clic.
+        </div>
+
+        <div class="preset-templates-grid">
+          <!-- Tarjeta 1: Bot de Campaña Votantes (Destacada) -->
+          <div class="preset-card highlighted">
+            <div class="preset-badge highlight"><i class="pi pi-bolt"></i> RECOMENDADO PARA CAMPAÑAS</div>
+            <div class="preset-card-head">
+              <span class="preset-icon highlight"><i class="pi pi-bolt"></i></span>
+              <div>
+                <strong>Bot Campaña: Confirmación Votantes + BD SQL</strong>
+                <small>Respuesta Directa Masiva (1. Sí / 2. No)</small>
+              </div>
+            </div>
+            <p class="preset-desc">
+              Diseñado para envíos masivos. Cuando el votante responde <strong>1</strong> o <strong>2</strong>,
+              actualiza inmediatamente <code>PersonaMovilizada</code> en SQL Server y envía el agradecimiento personalizado en un solo paso (sin repetir el menú).
+            </p>
+            <div class="preset-features">
+              <span><i class="pi pi-check"></i> Salto directo a confirmación</span>
+              <span><i class="pi pi-database"></i> Actualiza BD SQL Server en vivo</span>
+              <span><i class="pi pi-user"></i> Nombre real {{ '{{nombre}}' }}</span>
+            </div>
+            <div class="preset-actions">
+              <p-button
+                label="⚡ Cargar este Bot en el Editor"
+                icon="pi pi-bolt"
+                severity="success"
+                styleClass="w-full"
+                (onClick)="loadPlraConfirmationExample()"
+              />
             </div>
           </div>
-        } @else {
-          <div class="muted" style="margin-bottom:.8rem">Elegí una plantilla para crear un bot nuevo en segundos, reutilizando su guion de conversación.</div>
-          <div class="templates-grid">
+
+          <!-- Tarjeta 2: Bot Básico de Bienvenida -->
+          <div class="preset-card">
+            <div class="preset-badge basic"><i class="pi pi-sparkles"></i> BÁSICO</div>
+            <div class="preset-card-head">
+              <span class="preset-icon basic"><i class="pi pi-sparkles"></i></span>
+              <div>
+                <strong>Bot Básico de Bienvenida</strong>
+                <small>Captura de nombre y derivación</small>
+              </div>
+            </div>
+            <p class="preset-desc">
+              Saluda cordialmente al usuario, captura su nombre en una variable y ofrece opciones para derivarlo a ventas o soporte.
+            </p>
+            <div class="preset-features">
+              <span><i class="pi pi-check"></i> Saludo personalizado</span>
+              <span><i class="pi pi-check"></i> Captura {{ '{{nombre}}' }}</span>
+              <span><i class="pi pi-check"></i> Derivación por condición</span>
+            </div>
+            <div class="preset-actions">
+              <p-button
+                label="Cargar Ejemplo Básico"
+                icon="pi pi-sparkles"
+                severity="secondary"
+                styleClass="w-full"
+                (onClick)="loadExample()"
+              />
+            </div>
+          </div>
+
+          <!-- Tarjeta 3: Bot Multinivel de Atención -->
+          <div class="preset-card">
+            <div class="preset-badge multi"><i class="pi pi-sitemap"></i> MULTINIVEL</div>
+            <div class="preset-card-head">
+              <span class="preset-icon multi"><i class="pi pi-sitemap"></i></span>
+              <div>
+                <strong>Bot Multinivel (3 Niveles)</strong>
+                <small>5 Áreas y subcategorías</small>
+              </div>
+            </div>
+            <p class="preset-desc">
+              Menú completo para empresas con áreas de Ventas, Soporte, Facturación, Pedidos y Asesor con submenús jerárquicos.
+            </p>
+            <div class="preset-features">
+              <span><i class="pi pi-check"></i> 3 niveles de profundidad</span>
+              <span><i class="pi pi-check"></i> 5 departamentos</span>
+              <span><i class="pi pi-check"></i> Rutas guiadas por opción</span>
+            </div>
+            <div class="preset-actions">
+              <p-button
+                label="Cargar Multinivel"
+                icon="pi pi-sitemap"
+                severity="help"
+                styleClass="w-full"
+                (onClick)="loadMultilevelExample()"
+              />
+            </div>
+          </div>
+
+          <!-- Tarjeta 4: Bot Consulta Recinto API -->
+          <div class="preset-card">
+            <div class="preset-badge api"><i class="pi pi-cloud"></i> API / PADRÓN</div>
+            <div class="preset-card-head">
+              <span class="preset-icon api"><i class="pi pi-cloud"></i></span>
+              <div>
+                <strong>Bot Consulta Recinto (API)</strong>
+                <small>Consulta externa por celular</small>
+              </div>
+            </div>
+            <p class="preset-desc">
+              Detecta automáticamente el número de WhatsApp, consulta el recinto electoral vía API GET y genera enlace a Google Maps.
+            </p>
+            <div class="preset-features">
+              <span><i class="pi pi-check"></i> Conexión API externa</span>
+              <span><i class="pi pi-check"></i> Ubicación Google Maps</span>
+              <span><i class="pi pi-check"></i> Opción de reintento</span>
+            </div>
+            <div class="preset-actions">
+              <p-button
+                label="Cargar Consulta API"
+                icon="pi pi-cloud"
+                severity="info"
+                styleClass="w-full"
+                (onClick)="loadMeetingApiExample()"
+              />
+            </div>
+          </div>
+        </div>
+
+        @if (templateFlows().length > 0) {
+          <div class="section-divider" style="margin:1.5rem 0 1rem"></div>
+          <div class="templates-subheading"><i class="pi pi-bookmark"></i><strong>Tus Plantillas Guardadas</strong></div>
+          <div class="templates-grid" style="margin-top:.6rem">
             @for (tpl of templateFlows(); track tpl.id) {
               <div class="template-card">
                 <div class="template-card-head"><i class="pi pi-copy"></i><strong>{{ tpl.name }}</strong></div>
@@ -283,7 +401,14 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
           }
 
           <div class="section-divider"></div>
-          <label>Sesiones asignadas</label>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem">
+            <label style="margin:0">Líneas / Números asignados</label>
+            <div class="session-quick-actions">
+              <button type="button" class="link-btn" (click)="selectAllSessions()">Todas</button>
+              <button type="button" class="link-btn" (click)="clearAllSessions()">Ninguna</button>
+            </div>
+          </div>
+          <div class="field-help" style="margin-bottom:.4rem">Marca o desmarca las líneas que responderán con este bot. Solo los números seleccionados ejecutarán este flujo.</div>
           <div class="session-options">
             @for (session of sessions(); track session.id) {
               <label class="session-option" [class.selected]="selectedSessionIds().includes(session.id)">
@@ -291,11 +416,11 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
                 <span class="session-dot" [class.connected]="session.status === 'CONNECTED'"></span>
                 <span>
                   <strong>{{ session.name }}</strong>
-                  <small>{{ session.phoneE164 || session.status }} · {{ session.isBotActive ? 'Bot activo' : 'Se activará al guardar' }}</small>
+                  <small>{{ session.phoneE164 || session.status }} · {{ selectedSessionIds().includes(session.id) ? '✅ Asignado a este bot' : '⚪ No asignado' }}</small>
                 </span>
               </label>
             } @empty {
-              <div class="empty-state">Todavía no hay sesiones disponibles.</div>
+              <div class="empty-state">Todavía no hay sesiones disponibles. Ve a Sesiones para vincular WhatsApp.</div>
             }
           </div>
         </aside>
@@ -496,45 +621,48 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
                   <div class="node-actions">
                     <button type="button" title="Subir" [disabled]="index === 0" (click)="moveStep(index, -1); $event.stopPropagation()"><i class="pi pi-arrow-up"></i></button>
                     <button type="button" title="Bajar" [disabled]="index === steps().length - 1" (click)="moveStep(index, 1); $event.stopPropagation()"><i class="pi pi-arrow-down"></i></button>
-                    <button type="button" title="Duplicar" (click)="duplicateStep(index); $event.stopPropagation()"><i class="pi pi-copy"></i></button>
-                    <button type="button" class="danger" title="Eliminar" (click)="removeStep(index); $event.stopPropagation()"><i class="pi pi-trash"></i></button>
+                    <button type="button" class="danger" title="Eliminar" [disabled]="steps().length <= 1" (click)="removeStep(index); $event.stopPropagation()"><i class="pi pi-trash"></i></button>
                   </div>
                 </article>
                 @if (index < steps().length - 1) { <div class="connector-line"></div> }
-              } @empty {
-                <div class="empty-canvas"><i class="pi pi-sitemap"></i><strong>Tu flujo está vacío</strong><span>Agrega mensajes, preguntas, menús, condiciones o finales.</span></div>
               }
             </div>
           }
         </section>
 
         <aside class="panel inspector-panel">
-          <div class="panel-title"><span class="step-number">3</span><div><strong>Propiedades</strong><small>Edita el bloque seleccionado</small></div></div>
+          <div class="panel-title"><span class="step-number">3</span><div><strong>Inspector del bloque</strong><small>Personaliza el paso seleccionado</small></div></div>
 
           @if (selectedStep(); as step) {
-            <label for="selected-step-type">Tipo de bloque</label>
-            <select id="selected-step-type" [ngModel]="step.type" (ngModelChange)="changeSelectedType($event)">
-              <option value="MESSAGE">Enviar mensaje</option>
-              <option value="QUESTION">Hacer pregunta</option>
-              <option value="MENU">Menú con destinos</option>
-              <option value="CONDITION">Evaluar condición</option>
-              <option value="API_REQUEST">Consultar API externa</option>
-              <option value="END">Finalizar flujo</option>
+            <label for="step-type">Tipo de bloque</label>
+            <select id="step-type" [ngModel]="step.type" (ngModelChange)="changeSelectedType($event)">
+              <option value="MESSAGE">Mensaje</option>
+              <option value="QUESTION">Pregunta</option>
+              <option value="MENU">Menú de opciones</option>
+              <option value="API_REQUEST">Consultar API</option>
+              <option value="CONDITION">Condición</option>
+              <option value="END">Final</option>
             </select>
 
-            @if (step.type === 'MESSAGE' || step.type === 'QUESTION' || step.type === 'MENU' || step.type === 'END') {
-              <label for="selected-step-text">{{ step.type === 'QUESTION' ? 'Pregunta' : step.type === 'MENU' ? 'Texto del menú' : step.type === 'END' ? 'Mensaje final' : 'Mensaje' }}</label>
-              <textarea id="selected-step-text" rows="6" [ngModel]="step.text" (ngModelChange)="updateSelected({ text: $event })" placeholder="Escribe el texto que recibirá el usuario"></textarea>
-              <div class="field-help">Puedes usar variables como <code>{{ '{{nombre}}' }}</code>.</div>
+            @if (step.type === 'MESSAGE' || step.type === 'QUESTION' || step.type === 'END') {
+              <label for="step-text">{{ step.type === 'END' ? 'Mensaje final' : 'Texto del mensaje' }}</label>
+              <textarea id="step-text" rows="5" [ngModel]="step.text" (ngModelChange)="updateSelected({ text: $event })" [placeholder]="'Escribe el mensaje aquí... Puedes usar {{nombre}}'"></textarea>
             }
 
             @if (step.type === 'QUESTION') {
-              <label for="selected-variable">Guardar respuesta en</label>
-              <input pInputText id="selected-variable" [ngModel]="step.variable" (ngModelChange)="updateSelected({ variable: $event })" placeholder="nombre" />
+              <label for="question-variable">Guardar respuesta en la variable</label>
+              <input pInputText id="question-variable" [ngModel]="step.variable" (ngModelChange)="updateSelected({ variable: $event })" placeholder="nombre" />
             }
 
             @if (step.type === 'MENU') {
-              <label for="menu-variable">Guardar selección en</label>
+              <div class="direct-response-badge" style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:8px;padding:.5rem .7rem;font-size:.78rem;margin:.4rem 0;display:flex;align-items:center;gap:.4rem">
+                <i class="pi pi-bolt" style="color:#059669"></i>
+                <span><strong>Respuesta Directa a Campañas Masivas Activa:</strong> Si el votante responde con el número o texto de la opción directamente, el bot registrará su respuesta y saltará de inmediato al paso final configurado.</span>
+              </div>
+              <label for="menu-text">Texto del menú</label>
+              <textarea id="menu-text" rows="5" [ngModel]="step.text" (ngModelChange)="updateSelected({ text: $event })" placeholder="Elige una opción..."></textarea>
+
+              <label for="menu-variable">Guardar opción en la variable</label>
               <input pInputText id="menu-variable" [ngModel]="step.variable" (ngModelChange)="updateSelected({ variable: $event })" placeholder="menu_principal" />
 
               <label for="menu-invalid">Respuesta cuando la opción no existe</label>
@@ -549,6 +677,18 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
                       <input pInputText [ngModel]="option.label" (ngModelChange)="updateMenuOption(optionIndex, { label: $event })" placeholder="Ventas" />
                       <button type="button" title="Eliminar opción" [disabled]="step.options.length <= 2" (click)="removeMenuOption(optionIndex)"><i class="pi pi-trash"></i></button>
                     </div>
+                    @if (step.variable === 'respuesta_apoyo' || isVoterChoice(option)) {
+                      <div class="db-sync-pill" [class.support]="isSupportOption(option)" [class.unsupport]="isUnsupportOption(option)">
+                        <i class="pi pi-database"></i>
+                        @if (isSupportOption(option)) {
+                          <span><strong>Acción en BD SQL Server:</strong> <code>[PersonaMovilizada]</code> &rarr; EstadoApoyo = 'APOYA', NivelCompromiso = 'ALTO', EstadoRegistro = 'COMPROMETIDO'</span>
+                        } @else if (isUnsupportOption(option)) {
+                          <span><strong>Acción en BD SQL Server:</strong> <code>[PersonaMovilizada]</code> &rarr; EstadoApoyo = 'NO_APOYA', NivelCompromiso = 'BAJO'</span>
+                        } @else {
+                          <span><strong>Acción en BD SQL Server:</strong> Sincronización automática de voto</span>
+                        }
+                      </div>
+                    }
                     <select [ngModel]="option.nextStepId" (ngModelChange)="updateMenuOption(optionIndex, { nextStepId: $event })">
                       <option value="">Selecciona el bloque de destino</option>
                       @for (target of steps(); track target.id; let targetIndex = $index) {
@@ -628,9 +768,9 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
         </aside>
       </section>
 
-      <p-card header="Flujos registrados" styleClass="flow-table">
+      <p-card header="Flujos registrados en el sistema" styleClass="flow-table">
         <p-table [value]="flows()" [tableStyle]="{ 'min-width': '980px' }">
-          <ng-template #header><tr><th>Nombre</th><th>Versión</th><th>Disparador</th><th>Pasos</th><th>Sesiones</th><th>Estado</th><th>Acción</th></tr></ng-template>
+          <ng-template #header><tr><th>Nombre del Bot</th><th>Versión</th><th>Disparador</th><th>Pasos</th><th>Líneas / Números</th><th>Estado</th><th>Acción</th></tr></ng-template>
           <ng-template #body let-flow>
           <tr>
             <td>
@@ -638,15 +778,29 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
               @if (flow.isTemplate) { <span class="template-pill"><i class="pi pi-copy"></i> Plantilla</span> }
               <div class="muted">{{ flow.description || 'Sin descripción' }}</div>
             </td>
-            <td>v{{ flow.version }}</td>
+            <td><span class="version-pill">v{{ flow.version }}</span></td>
             <td>{{ triggerLabel(flow) }}</td>
-            <td>{{ flow.definition.steps.length }}</td>
-            <td>{{ flow.sessionIds.length }}</td>
-            <td><span class="status-pill" [class.active-pill]="flow.isActive">{{ flow.isActive ? 'ACTIVO' : 'PAUSADO' }}</span></td>
+            <td>{{ flow.definition.steps.length }} bloques</td>
+            <td>
+              <span class="sessions-badge">
+                <i class="pi pi-phone"></i> {{ flow.sessionIds.length }} {{ flow.sessionIds.length === 1 ? 'línea' : 'líneas' }}
+              </span>
+            </td>
+            <td>
+              @if (flow.isActive) {
+                <span class="status-pill active-pill"><i class="pi pi-check-circle"></i> HABILITADO</span>
+              } @else {
+                <span class="status-pill paused-pill"><i class="pi pi-pause-circle"></i> DESHABILITADO</span>
+              }
+            </td>
             <td>
               <div class="flow-actions">
                 <p-button label="Editar" icon="pi pi-pencil" size="small" severity="info" (onClick)="editFlow(flow)" />
-                <p-button [label]="flow.isActive ? 'Pausar' : 'Activar'" size="small" severity="secondary" (onClick)="toggleActive(flow)" />
+                @if (flow.isActive) {
+                  <p-button label="Deshabilitar" icon="pi pi-pause" size="small" severity="warn" (onClick)="toggleActive(flow)" />
+                } @else {
+                  <p-button label="Habilitar" icon="pi pi-play" size="small" severity="success" (onClick)="toggleActive(flow)" />
+                }
                 @if (flow.isTemplate) {
                   <p-button label="Quitar plantilla" size="small" severity="secondary" [text]="true" (onClick)="toggleTemplate(flow)" />
                 } @else {
@@ -662,6 +816,46 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
   `,
   styles: [`
     .templates-gallery-card{margin-bottom:1rem}
+    .preset-templates-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
+    .preset-card{border:1px solid #e2e8f0;background:#ffffff;border-radius:14px;padding:1.1rem;display:flex;flex-direction:column;gap:.65rem;box-shadow:0 4px 14px rgba(15,23,42,.04);position:relative;transition:all .2s ease}
+    .preset-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,23,42,.08)}
+    .preset-card.highlighted{border:2px solid #10b981;background:#f0fdf4;box-shadow:0 6px 20px rgba(16,185,129,.12)}
+    .preset-badge{align-self:flex-start;font-size:.68rem;font-weight:800;letter-spacing:.06em;padding:.2rem .55rem;border-radius:999px;display:flex;align-items:center;gap:.3rem}
+    .preset-badge.highlight{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+    .preset-badge.basic{background:#f1f5f9;color:#334155;border:1px solid #cbd5e1}
+    .preset-badge.multi{background:#f3e8ff;color:#6b21a8;border:1px solid #d8b4fe}
+    .preset-badge.api{background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc}
+    .preset-card-head{display:flex;align-items:center;gap:.7rem}
+    .preset-icon{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:1.15rem;flex-shrink:0}
+    .preset-icon.highlight{background:#10b981;color:#ffffff}
+    .preset-icon.basic{background:#e2e8f0;color:#334155}
+    .preset-icon.multi{background:#a855f7;color:#ffffff}
+    .preset-icon.api{background:#0284c7;color:#ffffff}
+    .preset-card-head strong{display:block;font-size:.95rem;color:#0f172a;line-height:1.25}
+    .preset-card-head small{color:#64748b;font-size:.76rem}
+    .preset-desc{font-size:.82rem;color:#475569;line-height:1.45;margin:0;flex-grow:1}
+    .preset-desc code{background:#e2e8f0;padding:.1rem .3rem;border-radius:4px;font-size:.78rem}
+    .preset-card.highlighted .preset-desc code{background:#dcfce7;color:#166534}
+    .preset-features{display:grid;gap:.3rem;font-size:.76rem;color:#334155;background:rgba(0,0,0,.02);padding:.55rem .7rem;border-radius:8px}
+    .preset-features span{display:flex;align-items:center;gap:.4rem}
+    .preset-features i{font-size:.74rem;color:#10b981}
+    .preset-actions{margin-top:.2rem}
+    .w-full{width:100%}
+    .templates-subheading{display:flex;align-items:center;gap:.5rem;color:#6b21a8;font-size:.92rem}
+    .session-quick-actions{display:flex;gap:.35rem}
+    .link-btn{background:none;border:none;color:#2563eb;font-size:.76rem;font-weight:700;cursor:pointer;padding:0 .25rem;text-decoration:underline}
+    .link-btn:hover{color:#1d4ed8}
+    .version-pill{background:#e2e8f0;color:#334155;padding:.15rem .45rem;border-radius:6px;font-size:.72rem;font-weight:700}
+    .sessions-badge{background:#e0f2fe;color:#0369a1;padding:.2rem .55rem;border-radius:999px;font-size:.74rem;font-weight:700;display:inline-flex;align-items:center;gap:.35rem}
+    .paused-pill{background:#fef3c7;color:#92400e;display:inline-flex;align-items:center;gap:.35rem}
+    .active-pill{background:#d1fae5;color:#065f46;display:inline-flex;align-items:center;gap:.35rem}
+    .db-sync-pill{display:flex;align-items:flex-start;gap:.4rem;padding:.4rem .6rem;border-radius:7px;font-size:.73rem;background:#f8fafc;color:#334155;border:1px solid #e2e8f0;line-height:1.35;margin:.2rem 0}
+    .db-sync-pill i{margin-top:.15rem;flex-shrink:0}
+    .db-sync-pill.support{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+    .db-sync-pill.support i{color:#059669}
+    .db-sync-pill.unsupport{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+    .db-sync-pill.unsupport i{color:#ea580c}
+    .db-sync-pill code{background:rgba(0,0,0,.06);padding:.1rem .25rem;border-radius:4px;font-size:.72rem}
     .empty-templates{display:flex;align-items:flex-start;gap:.7rem;background:#faf5ff;border:1px dashed #d8b4fe;border-radius:12px;padding:.85rem 1rem}
     .empty-templates i{color:#9333ea;font-size:1.1rem;margin-top:.15rem}
     .empty-templates strong{color:#334155}
@@ -673,7 +867,7 @@ function editableStepFromRecord(step: BotFlowStep): EditableStep {
     .template-card .small{font-size:.78rem}
     .template-card-meta{font-size:.74rem;color:#7e22ce;font-weight:700}
     .template-card .clone-form{background:#fff;border:1px solid #e3e8ef;border-radius:10px;padding:.6rem;margin-top:.1rem}
-    .flow-page{max-width:1800px}.flow-header{align-items:flex-end}.eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.14em;color:#2563eb;margin-bottom:.35rem}.header-actions{display:flex;gap:.55rem;flex-wrap:wrap}.flow-workspace{display:grid;grid-template-columns:minmax(260px,320px) minmax(460px,1fr) minmax(300px,390px);gap:1rem;align-items:start}.panel{background:#fff;border:1px solid #e1e7ee;border-radius:16px;box-shadow:0 8px 26px rgba(15,23,42,.05);padding:1rem}.setup-panel,.inspector-panel{position:sticky;top:1rem;display:grid;gap:.7rem}.panel-title{display:flex;align-items:center;gap:.65rem;margin-bottom:.35rem}.panel-title>div{display:grid;gap:.1rem}.panel-title small{color:#74808c;font-weight:400}.step-number{display:grid;place-items:center;width:30px;height:30px;border-radius:10px;background:#eaf2ff;color:#1d4ed8;font-weight:800}.panel label{font-size:.84rem;font-weight:700;color:#344054;margin-top:.2rem}.panel input,.panel textarea,.panel select{width:100%;border:1px solid #cfd8e3;border-radius:9px;padding:.68rem .72rem;background:#fff}.panel textarea{resize:vertical}.section-divider{height:1px;background:#edf1f5;margin:.35rem 0}.session-options{display:grid;gap:.45rem;max-height:260px;overflow:auto}.session-option{display:grid!important;grid-template-columns:auto auto 1fr;align-items:center;gap:.55rem;padding:.65rem;border:1px solid #e3e8ef;border-radius:10px;font-weight:400!important;cursor:pointer}.session-option.selected{border-color:#8bb8ff;background:#f2f7ff}.session-option>span:last-child{display:grid}.session-option small{color:#74808c}.session-dot{width:9px;height:9px;border-radius:50%;background:#98a2b3}.session-dot.connected{background:#12b76a}.canvas-panel{min-height:720px;padding:0;overflow:hidden}.canvas-toolbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem;border-bottom:1px solid #e7ebf0;flex-wrap:wrap}.palette{display:flex;gap:.4rem;flex-wrap:wrap}.palette-button{border:1px solid #d8e0e9;background:#fff;border-radius:9px;padding:.5rem .65rem;cursor:pointer;display:flex;align-items:center;gap:.38rem;font-weight:700;color:#344054}.palette-button.message i{color:#2563eb}.palette-button.question i{color:#7c3aed}.palette-button.menu i{color:#0891b2}.palette-button.api i{color:#0f766e}.palette-button.condition i{color:#d97706}.palette-button.end i{color:#dc2626}.flow-canvas{min-height:650px;padding:1.5rem;background-image:radial-gradient(#d9e2ec 1px,transparent 1px);background-size:22px 22px;background-color:#f8fafc;display:flex;flex-direction:column;align-items:center}.start-node{min-width:260px;background:#0f172a;color:#fff;border-radius:14px;padding:.8rem 1rem;display:grid;grid-template-columns:auto 1fr;column-gap:.65rem;align-items:center}.start-node small{grid-column:2;color:#cbd5e1}.start-dot{grid-row:1/3;width:16px;height:16px;border:4px solid #86efac;background:#22c55e;border-radius:50%}.connector-line{width:2px;height:28px;background:#b7c3d0;position:relative}.connector-line:after{content:'';position:absolute;bottom:-1px;left:-4px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #94a3b8}.flow-node{width:min(760px,100%);display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.8rem;align-items:start;background:#fff;border:2px solid #e3e8ef;border-radius:15px;padding:.9rem;cursor:pointer;box-shadow:0 6px 18px rgba(15,23,42,.06)}.flow-node.selected{border-color:#3b82f6;box-shadow:0 0 0 4px rgba(59,130,246,.12)}.node-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:#eaf2ff;color:#2563eb}.question-node .node-icon{background:#f2eaff;color:#7c3aed}.menu-node .node-icon{background:#e6f8fb;color:#0891b2}.condition-node .node-icon{background:#fff4df;color:#d97706}.api-node .node-icon{background:#ccfbf1;color:#0f766e}.end-node .node-icon{background:#feecec;color:#dc2626}.node-heading{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}.node-heading span{font-size:.75rem;color:#667085;text-transform:uppercase}.node-preview{margin-top:.35rem;white-space:pre-line;color:#344054}.node-meta{margin-top:.45rem;font-size:.8rem;color:#667085}.menu-preview,.branch-preview{display:grid;gap:.3rem;margin-top:.55rem;font-size:.8rem}.menu-preview span{background:#ecfeff;color:#155e75;padding:.35rem .5rem;border-radius:7px}.branch-preview span{padding:.35rem .5rem;border-radius:7px}.true-branch{background:#ecfdf3;color:#027a48}.false-branch{background:#fff4ed;color:#b54708}.node-actions{display:grid;grid-template-columns:repeat(2,30px);gap:.3rem}.node-actions button,.menu-option-row button,.menu-editor-title button{border:1px solid #d8e0e9;background:#fff;border-radius:8px;cursor:pointer;color:#475467}.node-actions button{width:30px;height:30px}.node-actions button:disabled,.menu-option-row button:disabled{opacity:.35}.node-actions button.danger{color:#d92d20}.field-help{font-size:.78rem;color:#74808c;margin-top:-.35rem}.menu-editor-title{display:flex;justify-content:space-between;align-items:center;margin-top:.45rem}.menu-editor-title button{padding:.4rem .55rem}.menu-options-editor,.api-mappings-editor{display:grid;gap:.65rem}.api-mapping-row{display:grid;grid-template-columns:1.2fr 1fr 1fr 34px;gap:.35rem}.api-mapping-row button{border:1px solid #d8e0e9;background:#fff;border-radius:8px;color:#b42318;cursor:pointer}.menu-option-editor{display:grid;gap:.4rem;border:1px solid #e3e8ef;border-radius:10px;padding:.55rem;background:#f8fafc}.menu-option-row{display:grid;grid-template-columns:65px 1fr 34px;gap:.35rem}.menu-option-row button{width:34px}.empty-canvas,.empty-inspector,.empty-state{display:grid;place-items:center;text-align:center;gap:.35rem;color:#74808c;padding:2rem}.flow-table{display:block;margin-top:1rem}.active-pill{background:#dcfae6;color:#067647}.template-pill{display:inline-flex;align-items:center;gap:.3rem;margin-left:.5rem;background:#f3e8ff;color:#7e22ce;border-radius:999px;padding:.15rem .5rem;font-size:.68rem;font-weight:800}.clone-row td{background:#f8fafc;border-top:0;padding:1rem}.clone-form{display:grid;gap:.5rem;max-width:520px}.clone-form-header{display:flex;align-items:center;gap:.4rem;font-weight:700;color:#334155}.clone-form label{font-size:.84rem;font-weight:700;color:#344054}.clone-form input{border:1px solid #cfd8e3;border-radius:9px;padding:.6rem .7rem}.clone-form-actions{display:flex;gap:.5rem;margin-top:.3rem}.inspector-panel code,.node-meta code{background:#eef2f6;border-radius:5px;padding:.1rem .25rem}.flow-table .muted{font-size:.82rem;margin-top:.2rem}.flow-actions{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}.editing-banner{display:grid;grid-template-columns:auto 1fr;gap:.55rem;align-items:start;border:1px solid #bfdbfe;background:#eff6ff;color:#1e40af;border-radius:10px;padding:.7rem}.editing-banner i{margin-top:.15rem}.editing-banner>div{display:grid;gap:.15rem}.editing-banner small{color:#475569;font-weight:400}
+    .flow-page{max-width:1800px}.flow-header{align-items:flex-end}.eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.14em;color:#2563eb;margin-bottom:.35rem}.header-actions{display:flex;gap:.55rem;flex-wrap:wrap}.flow-workspace{display:grid;grid-template-columns:minmax(260px,320px) minmax(460px,1fr) minmax(300px,390px);gap:1rem;align-items:start}.panel{background:#fff;border:1px solid #e1e7ee;border-radius:16px;box-shadow:0 8px 26px rgba(15,23,42,.05);padding:1rem}.setup-panel,.inspector-panel{position:sticky;top:1rem;display:grid;gap:.7rem}.panel-title{display:flex;align-items:center;gap:.65rem;margin-bottom:.35rem}.panel-title>div{display:grid;gap:.1rem}.panel-title small{color:#74808c;font-weight:400}.step-number{display:grid;place-items:center;width:30px;height:30px;border-radius:10px;background:#eaf2ff;color:#1d4ed8;font-weight:800}.panel label{font-size:.84rem;font-weight:700;color:#344054;margin-top:.2rem}.panel input,.panel textarea,.panel select{width:100%;border:1px solid #cfd8e3;border-radius:9px;padding:.68rem .72rem;background:#fff}.panel textarea{resize:vertical}.section-divider{height:1px;background:#edf1f5;margin:.35rem 0}.session-options{display:grid;gap:.45rem;max-height:260px;overflow:auto}.session-option{display:grid!important;grid-template-columns:auto auto 1fr;align-items:center;gap:.55rem;padding:.65rem;border:1px solid #e3e8ef;border-radius:10px;font-weight:400!important;cursor:pointer}.session-option.selected{border-color:#8bb8ff;background:#f2f7ff}.session-option>span:last-child{display:grid}.session-option small{color:#74808c}.session-dot{width:9px;height:9px;border-radius:50%;background:#98a2b3}.session-dot.connected{background:#12b76a}.canvas-panel{min-height:720px;padding:0;overflow:hidden}.canvas-toolbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem;border-bottom:1px solid #e7ebf0;flex-wrap:wrap}.palette{display:flex;gap:.4rem;flex-wrap:wrap}.palette-button{border:1px solid #d8e0e9;background:#fff;border-radius:9px;padding:.5rem .65rem;cursor:pointer;display:flex;align-items:center;gap:.38rem;font-weight:700;color:#344054}.palette-button.message i{color:#2563eb}.palette-button.question i{color:#7c3aed}.palette-button.menu i{color:#0891b2}.palette-button.api i{color:#0f766e}.palette-button.condition i{color:#d97706}.palette-button.end i{color:#dc2626}.flow-canvas{min-height:650px;padding:1.5rem;background-image:radial-gradient(#d9e2ec 1px,transparent 1px);background-size:22px 22px;background-color:#f8fafc;display:flex;flex-direction:column;align-items:center}.start-node{min-width:260px;background:#0f172a;color:#fff;border-radius:14px;padding:.8rem 1rem;display:grid;grid-template-columns:auto 1fr;column-gap:.65rem;align-items:center}.start-node small{grid-column:2;color:#cbd5e1}.start-dot{grid-row:1/3;width:16px;height:16px;border:4px solid #86efac;background:#22c55e;border-radius:50%}.connector-line{width:2px;height:28px;background:#b7c3d0;position:relative}.connector-line:after{content:'';position:absolute;bottom:-1px;left:-4px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #94a3b8}.flow-node{width:min(760px,100%);display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.8rem;align-items:start;background:#fff;border:2px solid #e3e8ef;border-radius:15px;padding:.9rem;cursor:pointer;box-shadow:0 6px 18px rgba(15,23,42,.06)}.flow-node.selected{border-color:#3b82f6;box-shadow:0 0 0 4px rgba(59,130,246,.12)}.node-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:#eaf2ff;color:#2563eb}.question-node .node-icon{background:#f2eaff;color:#7c3aed}.menu-node .node-icon{background:#e6f8fb;color:#0891b2}.condition-node .node-icon{background:#fff4df;color:#d97706}.api-node .node-icon{background:#ccfbf1;color:#0f766e}.end-node .node-icon{background:#feecec;color:#dc2626}.node-heading{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}.node-heading span{font-size:.75rem;color:#667085;text-transform:uppercase}.node-preview{margin-top:.35rem;white-space:pre-line;color:#344054}.node-meta{margin-top:.45rem;font-size:.8rem;color:#667085}.menu-preview,.branch-preview{display:grid;gap:.3rem;margin-top:.55rem;font-size:.8rem}.menu-preview span{background:#ecfeff;color:#155e75;padding:.35rem .5rem;border-radius:7px}.branch-preview span{padding:.35rem .5rem;border-radius:7px}.true-branch{background:#ecfdf3;color:#027a48}.false-branch{background:#fff4ed;color:#b54708}.node-actions{display:grid;grid-template-columns:repeat(2,30px);gap:.3rem}.node-actions button,.menu-option-row button,.menu-editor-title button{border:1px solid #d8e0e9;background:#fff;border-radius:8px;cursor:pointer;color:#475467}.node-actions button{width:30px;height:30px}.node-actions button:disabled,.menu-option-row button:disabled{opacity:.35}.node-actions button.danger{color:#d92d20}.field-help{font-size:.78rem;color:#74808c;margin-top:-.35rem}.menu-editor-title{display:flex;justify-content:space-between;align-items:center;margin-top:.45rem}.menu-editor-title button{padding:.4rem .55rem}.menu-options-editor,.api-mappings-editor{display:grid;gap:.65rem}.api-mapping-row{display:grid;grid-template-columns:1.2fr 1fr 1fr 34px;gap:.35rem}.api-mapping-row button{border:1px solid #d8e0e9;background:#fff;border-radius:8px;color:#b42318;cursor:pointer}.menu-option-editor{display:grid;gap:.4rem;border:1px solid #e3e8ef;border-radius:10px;padding:.55rem;background:#f8fafc}.menu-option-row{display:grid;grid-template-columns:65px 1fr 34px;gap:.35rem}.menu-option-row button{width:34px}.empty-canvas,.empty-inspector,.empty-state{display:grid;place-items:center;text-align:center;gap:.35rem;color:#74808c;padding:2rem}.flow-table{display:block;margin-top:1rem}.template-pill{display:inline-flex;align-items:center;gap:.3rem;margin-left:.5rem;background:#f3e8ff;color:#7e22ce;border-radius:999px;padding:.15rem .5rem;font-size:.68rem;font-weight:800}.clone-row td{background:#f8fafc;border-top:0;padding:1rem}.clone-form{display:grid;gap:.5rem;max-width:520px}.clone-form-header{display:flex;align-items:center;gap:.4rem;font-weight:700;color:#334155}.clone-form label{font-size:.84rem;font-weight:700;color:#344054}.clone-form input{border:1px solid #cfd8e3;border-radius:9px;padding:.6rem .7rem}.clone-form-actions{display:flex;gap:.5rem;margin-top:.3rem}.inspector-panel code,.node-meta code{background:#eef2f6;border-radius:5px;padding:.1rem .25rem}.flow-table .muted{font-size:.82rem;margin-top:.2rem}.flow-actions{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}.editing-banner{display:grid;grid-template-columns:auto 1fr;gap:.55rem;align-items:start;border:1px solid #bfdbfe;background:#eff6ff;color:#1e40af;border-radius:10px;padding:.7rem}.editing-banner i{margin-top:.15rem}.editing-banner>div{display:grid;gap:.15rem}.editing-banner small{color:#475569;font-weight:400}
     .canvas-actions{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;justify-content:flex-end}.view-switch{display:flex;align-items:center;border:1px solid #d8e0e9;border-radius:10px;padding:.18rem;background:#f8fafc}.view-switch button{border:0;background:transparent;border-radius:8px;padding:.42rem .58rem;cursor:pointer;color:#475467;font-weight:700;display:flex;align-items:center;gap:.35rem}.view-switch button.active{background:#fff;color:#1d4ed8;box-shadow:0 1px 5px rgba(15,23,42,.12)}.flow-workspace.map-expanded{grid-template-columns:minmax(0,1fr)}.flow-workspace.map-expanded>.setup-panel,.flow-workspace.map-expanded>.inspector-panel{display:none}.flow-map{min-height:650px;padding:1rem 1.25rem 2rem;background-image:radial-gradient(#d9e2ec 1px,transparent 1px);background-size:22px 22px;background-color:#f8fafc;overflow:auto}.map-help{display:flex;justify-content:space-between;gap:1rem;align-items:center;background:rgba(255,255,255,.92);border:1px solid #dfe6ee;border-radius:12px;padding:.7rem .85rem;margin-bottom:1rem;color:#475467;font-size:.82rem;position:sticky;top:0;z-index:4;backdrop-filter:blur(6px)}.map-help>div:first-child{display:flex;align-items:center;gap:.45rem}.map-help .pi-info-circle{color:#2563eb}.map-legend{display:flex;gap:.75rem;flex-wrap:wrap}.map-legend span{display:flex;align-items:center;gap:.3rem;white-space:nowrap}.legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#64748b}.legend-dot.level-1{background:#0891b2}.legend-dot.level-2{background:#7c3aed}.map-start-row,.map-row{display:grid;grid-template-columns:155px minmax(360px,820px);gap:.75rem;align-items:center;position:relative;width:max-content;min-width:min(100%,980px)}.map-start-row{margin-bottom:.75rem}.map-start-card{display:flex;align-items:center;gap:.7rem;background:#0f172a;color:#fff;border-radius:14px;padding:.75rem 1rem;box-shadow:0 7px 18px rgba(15,23,42,.18)}.map-start-card>div{display:grid}.map-start-card small{color:#cbd5e1}.route-pill{justify-self:end;display:flex;align-items:center;gap:.4rem;max-width:155px;background:#e2e8f0;color:#334155;border-radius:999px;padding:.42rem .65rem;font-size:.78rem;font-weight:700;text-align:right}.route-pill b{display:grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:#0f172a;color:#fff}.entry-pill{background:#dcfce7;color:#166534}.map-tree{display:grid;gap:.75rem}.map-row:not(.root-row)::before{content:'';position:absolute;left:-30px;top:50%;width:30px;border-top:2px solid #94a3b8}.map-row:not(.root-row)::after{content:'';position:absolute;left:-30px;top:-.8rem;height:calc(50% + .8rem);border-left:2px solid #cbd5e1}.map-row.repeated-row::before{border-top-style:dashed}.map-node{position:relative;display:grid;grid-template-columns:5px auto minmax(0,1fr) auto;gap:.75rem;align-items:start;background:#fff;border:2px solid #e3e8ef;border-radius:15px;padding:.8rem .85rem .8rem 0;cursor:pointer;box-shadow:0 6px 18px rgba(15,23,42,.06);overflow:hidden}.map-node:hover{border-color:#a8c6f8;transform:translateY(-1px)}.map-node.selected{border-color:#3b82f6;box-shadow:0 0 0 4px rgba(59,130,246,.12)}.map-node-accent{align-self:stretch;background:#2563eb;border-radius:0 6px 6px 0}.question-node .map-node-accent{background:#7c3aed}.menu-node .map-node-accent{background:#0891b2}.condition-node .map-node-accent{background:#d97706}.end-node .map-node-accent{background:#dc2626}.map-node-content{min-width:0}.map-node-heading{display:flex;justify-content:space-between;gap:.75rem;align-items:center}.map-node-heading>div{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap}.level-badge,.step-badge,.reference-badge{font-size:.68rem;font-weight:800;letter-spacing:.04em;border-radius:999px;padding:.22rem .45rem}.level-badge{background:#eef2f6;color:#475467}.step-badge{background:#eaf2ff;color:#1d4ed8}.reference-badge{background:#f3e8ff;color:#7e22ce}.map-node-preview{margin-top:.35rem;color:#344054;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.map-breadcrumb{margin-top:.4rem;color:#667085;font-size:.76rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.map-routes{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.35rem;margin-top:.6rem}.map-routes span{display:flex;align-items:center;gap:.35rem;background:#ecfeff;color:#155e75;border:1px solid #bae6fd;border-radius:8px;padding:.35rem .45rem;font-size:.76rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.map-routes span b{display:grid;place-items:center;min-width:22px;height:22px;background:#0891b2;color:#fff;border-radius:6px}.map-routes span.missing-route{background:#fff1f2;color:#be123c;border-color:#fecdd3}.map-node-actions{display:flex;gap:.3rem}.map-node-actions button{width:31px;height:31px;border:1px solid #d8e0e9;background:#fff;border-radius:8px;cursor:pointer;color:#475467}.orphan-section{margin-top:1.25rem;border:1px dashed #f59e0b;background:#fffbeb;border-radius:14px;padding:.85rem}.orphan-title{display:flex;align-items:center;gap:.55rem;color:#92400e}.orphan-title>div{display:grid}.orphan-title small{font-weight:400}.orphan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.5rem;margin-top:.7rem}.orphan-grid button{display:grid;grid-template-columns:auto 1fr;gap:.2rem .45rem;text-align:left;border:1px solid #fde68a;background:#fff;border-radius:10px;padding:.6rem;cursor:pointer;color:#78350f}.orphan-grid button small{grid-column:2;color:#92400e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.list-canvas{min-height:650px}
     .graph-map{padding:0;background:#f8fafc}.graph-toolbar{position:sticky;top:0;z-index:8;display:grid;grid-template-columns:minmax(260px,1fr) auto auto;gap:.8rem;align-items:center;padding:.8rem 1rem;background:rgba(255,255,255,.96);border-bottom:1px solid #dde5ee;backdrop-filter:blur(8px)}.graph-instructions{display:flex;align-items:center;gap:.5rem;color:#475467;font-size:.82rem}.graph-instructions i{color:#2563eb}.graph-stats{display:flex;gap:.45rem;flex-wrap:wrap}.graph-stats span{border:1px solid #dbe3ec;background:#f8fafc;border-radius:999px;padding:.35rem .58rem;font-size:.74rem;color:#475467}.graph-stats b{color:#0f172a}.graph-stats .finish-stat{background:#fff1f2;border-color:#fecdd3;color:#9f1239}.zoom-controls{display:flex;align-items:center;gap:.3rem;border:1px solid #d8e0e9;background:#f8fafc;border-radius:10px;padding:.2rem}.zoom-controls button{width:31px;height:31px;border:0;border-radius:7px;background:#fff;color:#344054;cursor:pointer;box-shadow:0 1px 3px rgba(15,23,42,.08)}.zoom-controls span{min-width:48px;text-align:center;font-size:.74rem;font-weight:800;color:#344054}.graph-legend{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;padding:.55rem 1rem;background:#fff;border-bottom:1px solid #e6ebf1;color:#667085;font-size:.74rem}.graph-legend span{display:flex;align-items:center;gap:.35rem}.legend-shape{display:inline-block;width:16px;height:10px;border-radius:3px;background:#2563eb}.start-shape{border-radius:999px;background:#16a34a}.menu-shape{background:#0891b2}.question-shape{background:#7c3aed}.condition-shape{background:#d97706}.finish-shape{border-radius:999px;background:#dc2626}.graph-viewport{height:720px;overflow:auto;background-color:#f8fafc;background-image:radial-gradient(#d7e0ea 1px,transparent 1px);background-size:20px 20px}.graph-scaled-area{position:relative;min-width:100%;min-height:100%;padding:1px}.graph-canvas{position:relative;transform-origin:top left}.graph-connectors{position:absolute;inset:0;overflow:visible;pointer-events:none}.graph-edge{fill:none;stroke:#64748b;stroke-width:2.2;opacity:.78}.graph-edge.branch-edge{stroke:#0891b2;stroke-width:2.5}.graph-connectors marker path{fill:#64748b}.edge-label rect{fill:#fff;stroke:#cbd5e1;stroke-width:1;filter:drop-shadow(0 2px 3px rgba(15,23,42,.08))}.edge-label text{font-size:11px;font-weight:800;fill:#334155}.graph-node{position:absolute;box-sizing:border-box;z-index:2}.graph-start-node{display:flex;align-items:center;gap:.7rem;padding:.75rem 1rem;border:2px solid #86efac;background:#f0fdf4;border-radius:999px;box-shadow:0 8px 20px rgba(22,163,74,.13)}.graph-start-node>div:last-child{display:grid;min-width:0}.graph-start-node strong{color:#166534;letter-spacing:.08em}.graph-start-node small{color:#4d7c5d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.terminal-symbol{display:grid;place-items:center;flex:0 0 auto}.play-symbol{width:38px;height:38px;border-radius:50%;background:#16a34a;color:#fff}.graph-step-node{background:#fff;border:2px solid #dce3eb;border-radius:15px;padding:.75rem;box-shadow:0 8px 22px rgba(15,23,42,.07);cursor:pointer;overflow:hidden;transition:border-color .15s,box-shadow .15s,transform .15s}.graph-step-node:hover{transform:translateY(-2px);border-color:#93b9f8;box-shadow:0 12px 28px rgba(15,23,42,.11)}.graph-step-node.selected{border-color:#2563eb;box-shadow:0 0 0 4px rgba(37,99,235,.13),0 12px 28px rgba(15,23,42,.1)}.graph-step-node.menu-node{border-top:5px solid #0891b2}.graph-step-node.message-node{border-top:5px solid #2563eb}.graph-step-node.question-node{border-top:5px solid #7c3aed}.graph-step-node.condition-node{border-top:5px solid #d97706}.graph-card-header{display:grid;grid-template-columns:auto 1fr auto;gap:.55rem;align-items:center}.graph-card-header>div{display:grid}.graph-card-header small{color:#667085;font-size:.7rem}.graph-card-header button{width:28px;height:28px;border:1px solid #d8e0e9;background:#fff;border-radius:7px;color:#475467;cursor:pointer}.graph-type-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#eaf2ff;color:#2563eb}.menu-node .graph-type-icon{background:#ecfeff;color:#0891b2}.question-node .graph-type-icon{background:#f3e8ff;color:#7c3aed}.condition-node .graph-type-icon{background:#fff7ed;color:#d97706}.api-node .graph-type-icon{background:#ccfbf1;color:#0f766e}.graph-step-node.api-node{border-top:5px solid #0f766e}.graph-card-preview{margin-top:.55rem;color:#344054;font-size:.79rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.graph-menu-summary{display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.55rem}.graph-menu-summary span{display:flex;align-items:center;gap:.25rem;background:#ecfeff;color:#155e75;border-radius:999px;padding:.25rem .45rem;font-size:.68rem;font-weight:700}.graph-path{margin-top:.5rem;padding-top:.45rem;border-top:1px dashed #dbe3ec;color:#667085;font-size:.67rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.graph-finish-node{display:flex;align-items:center;gap:.75rem!important;padding:.7rem 1rem!important;border:3px solid #ef4444!important;border-radius:999px!important;background:#fff1f2!important;box-shadow:0 9px 22px rgba(220,38,38,.16)!important}.finish-symbol{width:42px;height:42px;border-radius:50%;background:#dc2626;color:#fff;font-size:1.05rem}.finish-content{display:grid;min-width:0}.finish-content strong{font-size:1rem;letter-spacing:.16em;color:#991b1b}.finish-content small{color:#9f1239;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.graph-finish-node.selected{box-shadow:0 0 0 4px rgba(239,68,68,.15),0 9px 22px rgba(220,38,38,.16)!important}.flow-workspace.map-expanded .graph-viewport{height:calc(100vh - 230px)}
     @media(max-width:1250px){.flow-workspace{grid-template-columns:280px 1fr}.inspector-panel{grid-column:1/-1;position:static}.map-help{align-items:flex-start;flex-direction:column}.graph-toolbar{grid-template-columns:1fr auto}.graph-stats{display:none}}
@@ -730,6 +924,20 @@ export class FlowsComponent implements OnInit {
   toggleSession(id: string): void {
     const current = this.selectedSessionIds();
     this.selectedSessionIds.set(current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  selectAllSessions(): void {
+    const allIds = this.sessions().map((s) => s.id);
+    this.selectedSessionIds.set(allIds);
+  }
+
+  clearAllSessions(): void {
+    this.selectedSessionIds.set([]);
+  }
+
+  selectConnectedSessions(): void {
+    const activeIds = this.sessions().filter((s) => s.status === "CONNECTED").map((s) => s.id);
+    this.selectedSessionIds.set(activeIds);
   }
 
   selectStep(id: string): void { this.selectedStepId.set(id); }
@@ -1295,9 +1503,16 @@ export class FlowsComponent implements OnInit {
       stepNoApoya,
     ];
 
+    if (this.selectedSessionIds().length === 0) {
+      const activeIds = this.sessions().filter((s) => s.status === "CONNECTED").map((s) => s.id);
+      if (activeIds.length > 0) {
+        this.selectedSessionIds.set(activeIds);
+      }
+    }
+
     this.loadExampleIntoEditor(
-      "Encuesta de Confirmación PLRA",
-      "Flujo de confirmación con 2 opciones para registrar votantes comprometidos o desmarcar errores y actualizar automáticamente la base de datos.",
+      "Encuesta Masiva Votantes (Respuesta Directa + BD)",
+      "Flujo de confirmación con 2 opciones para registrar votantes comprometidos o desmarcar errores y actualizar automáticamente la base de datos SQL.",
       example,
     );
   }
@@ -1491,4 +1706,22 @@ export class FlowsComponent implements OnInit {
   stepPreview(step: EditableStep): string { if (step.type === "CONDITION") { const operator = step.operator === "EQUALS" ? "=" : step.operator === "CONTAINS" ? "contiene" : "tiene valor"; return `${step.variable || 'variable'} ${operator}${step.operator === 'EXISTS' ? '' : ` ${step.value || '...'}`}`; } if (step.type === "API_REQUEST") { return this.botConnectors().find((connector) => connector.id === step.connectorId)?.name || "Conector API sin seleccionar"; } return step.text.trim() || (step.type === "END" ? "Finalizar sin mensaje" : "Sin contenido"); }
   shortPreview(step: EditableStep): string { const value = this.stepPreview(step).replace(/\s+/g, " "); return value.length > 42 ? `${value.slice(0, 42)}…` : value; }
   stepTargetLabel(id: string): string { const index = this.steps().findIndex((step) => step.id === id); return index < 0 ? "Sin destino" : `Paso ${index + 1}: ${this.shortPreview(this.steps()[index])}`; }
+
+  isVoterChoice(option: EditableMenuOption): boolean {
+    const val = (option.value || "").trim().toLowerCase();
+    const lbl = (option.label || "").trim().toLowerCase();
+    return val === "1" || val === "2" || lbl.includes("apoy") || lbl.includes("no") || lbl.includes("si");
+  }
+
+  isSupportOption(option: EditableMenuOption): boolean {
+    const val = (option.value || "").trim().toLowerCase();
+    const lbl = (option.label || "").trim().toLowerCase();
+    return val === "1" || lbl.includes("apoy") || lbl.includes("si");
+  }
+
+  isUnsupportOption(option: EditableMenuOption): boolean {
+    const val = (option.value || "").trim().toLowerCase();
+    const lbl = (option.label || "").trim().toLowerCase();
+    return val === "2" || lbl.includes("no") || lbl.includes("error") || lbl.includes("interesa");
+  }
 }

@@ -6,6 +6,7 @@ import type { BotFlowRecord, BotFlowStep, IBotFlowRepository } from "../ports/re
 import type { IExternalConnectorExecutor } from "../ports/integrations/external-connector.executor.js";
 import type { IWhatsAppMessageRepository } from "../ports/repositories/whatsapp-message.repository.js";
 import type { Voto1x10Client } from "../../infrastructure/voto1x10/voto1x10-client.js";
+import type { Voto1x10DbRepository } from "../../infrastructure/voto1x10/voto1x10-db.repository.js";
 import { randomBetween, sleep } from "../../shared/utils/delay.js";
 import { logger } from "../../shared/logger/logger.js";
 
@@ -213,10 +214,114 @@ export class InboundMessageService {
     timing: InboundMessageTiming = {},
     private readonly externalConnectors?: IExternalConnectorExecutor,
     private readonly voto1x10Client?: Voto1x10Client | null,
+    private readonly voto1x10DbRepository?: Voto1x10DbRepository | null,
   ) {
     this.wait = timing.delay ?? sleep;
     this.nextDelayMs = timing.nextDelayMs ?? (() => randomBetween(2000, 4000));
     this.createMessageId = timing.createMessageId ?? (() => crypto.randomUUID().replaceAll("-", "").toUpperCase());
+  }
+
+  private isVoterSupportFlow(
+    flow: BotFlowRecord,
+    step?: BotFlowStep,
+    selectedOption?: { value: string; label: string },
+  ): boolean {
+    // 1) Si algún paso usa una variable explícita de campaña/votante
+    const hasVoterVariable = flow.definition.steps.some((s) => {
+      const v = (s.type === "MENU" || s.type === "QUESTION" ? (s.variable || "") : "").toLowerCase();
+      return ["respuesta_apoyo", "apoyo", "voto", "compromiso", "estado_apoyo", "votante"].includes(v);
+    });
+    if (hasVoterVariable) return true;
+
+    // 2) Si el paso puntual tiene una variable de apoyo
+    if (step && (step.type === "MENU" || step.type === "QUESTION")) {
+      const variableName = (step.variable || "").toLowerCase();
+      if (["respuesta_apoyo", "apoyo", "voto", "compromiso", "estado_apoyo", "votante"].includes(variableName)) {
+        return true;
+      }
+    }
+
+    // 3) Si el nombre del bot o la descripción indican que es de campaña/votantes
+    const flowText = `${flow.name} ${flow.description || ""}`.toLowerCase();
+    const isVoterCampaign = /(votant|apoyo|campa[nñ]a|plra|1x10|eleccion|elecci[oó]n|candidat)/i.test(flowText);
+    if (isVoterCampaign) return true;
+
+    // 4) Si las opciones del menú son explícitas de apoyo o rechazo
+    if (selectedOption) {
+      const optionText = `${selectedOption.value} ${selectedOption.label}`.toLowerCase();
+      if (/(apoy|quiero apoyar|no me interesa|fue un error|compromiso|partido)/i.test(optionText)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async syncVoterChoice(
+    phoneDigits: string,
+    flow: BotFlowRecord,
+    step: BotFlowStep,
+    selectedOption: { value: string; label: string },
+    variables: Record<string, string>,
+  ): Promise<void> {
+    if (!phoneDigits) return;
+
+    // Solo se sincroniza con la BD SQL Server (AppCampana1x10) si este flujo es de campaña/votantes
+    if (!this.isVoterSupportFlow(flow, step, selectedOption)) {
+      return;
+    }
+
+    const normValue = normalizeForMatch(selectedOption.value);
+    const normLabel = normalizeForMatch(selectedOption.label);
+    const isYes = normLabel.includes("apoy") || normLabel.includes("si") || (normValue === "1" && !normLabel.includes("no") && !normLabel.includes("error"));
+    const isNo = normLabel.includes("no") || normLabel.includes("error") || normLabel.includes("interesa") || (normValue === "2" && !normLabel.includes("apoy") && !normLabel.includes("si"));
+
+    const estadoApoyo = isYes ? "APOYA" : (isNo ? "NO_APOYA" : "CONSULTADO");
+    const observacionTexto = `${selectedOption.value} - ${selectedOption.label}`;
+
+    // 1) Actualización directa en Base de Datos SQL Server (AppCampana1x10.dbo.PersonaMovilizada)
+    if (this.voto1x10DbRepository) {
+      try {
+        const updated = await this.voto1x10DbRepository.actualizarCompromisoPorCelular(
+          phoneDigits,
+          estadoApoyo,
+          observacionTexto,
+        );
+        if (updated) {
+          const nom = (updated.Nombres || "").trim();
+          const ape = (updated.Apellidos || "").trim();
+          const nombreCompleto = `${nom} ${ape}`.trim();
+          if (nom) variables.nombre = nom;
+          if (ape) variables.apellidos = ape;
+          if (nombreCompleto) variables.nombre_completo = nombreCompleto;
+          if (nom) variables.nombre_votante = nom;
+          if (updated.EstadoApoyo) variables.estado_apoyo = updated.EstadoApoyo;
+        }
+      } catch (error) {
+        logger.error({ error, phoneDigits, estadoApoyo }, "Error en actualización directa SQL de votante.");
+      }
+    }
+
+    // 2) Sincronización HTTP complementaria vía API .NET Core si está configurada
+    if (this.voto1x10Client) {
+      try {
+        const syncResult = await this.voto1x10Client.procesarRespuestaBot(
+          phoneDigits,
+          selectedOption.value || selectedOption.label,
+        );
+        if (syncResult) {
+          if (syncResult.nombreVotante && !variables.nombre) {
+            variables.nombre = syncResult.nombreVotante;
+            variables.nombre_votante = syncResult.nombreVotante;
+          }
+          if (syncResult.estadoApoyoAsignado) {
+            variables.estado_apoyo = syncResult.estadoApoyoAsignado;
+          }
+        }
+      } catch (error) {
+        logger.warn({ error, phoneDigits, selectedOption }, "Error actualizando respuesta de opción en 1x10 API.");
+      }
+    }
   }
 
   register(socket: WASocket, sessionId: string): void {
@@ -315,20 +420,23 @@ export class InboundMessageService {
       variables.celular_internacional = phoneDigits;
       variables.telefono_e164 = `+${phoneDigits}`;
 
-      if (this.voto1x10Client) {
+      // Precarga de datos del votante desde BD local de SQL Server si aún no se tienen
+      if (this.voto1x10DbRepository) {
         try {
-          const syncResult = await this.voto1x10Client.procesarRespuestaBot(phoneDigits, text);
-          if (syncResult) {
-            if (syncResult.nombreVotante) {
-              variables.nombre = syncResult.nombreVotante;
-              variables.nombre_votante = syncResult.nombreVotante;
-            }
-            if (syncResult.estadoApoyoAsignado) {
-              variables.estado_apoyo = syncResult.estadoApoyoAsignado;
-            }
+          const votante = await this.voto1x10DbRepository.buscarPorCelular(phoneDigits);
+          if (votante) {
+            const nom = (votante.Nombres || "").trim();
+            const ape = (votante.Apellidos || "").trim();
+            const nombreCompleto = `${nom} ${ape}`.trim();
+            if (nom) variables.nombre = nom;
+            if (ape) variables.apellidos = ape;
+            if (nombreCompleto) variables.nombre_completo = nombreCompleto;
+            if (nom) variables.nombre_votante = nom;
+            if (votante.EstadoApoyo) variables.estado_apoyo = votante.EstadoApoyo;
+            if (votante.IdPersonaMovilizada) variables._idPersonaMovilizada = String(votante.IdPersonaMovilizada);
           }
         } catch (error) {
-          logger.warn({ error, phoneDigits, text }, "No se pudo sincronizar respuesta de bot con 1x10 API.");
+          logger.warn({ error, phoneDigits }, "No se pudo precargar votante desde BD SQL Server.");
         }
       }
     }
@@ -339,6 +447,8 @@ export class InboundMessageService {
     const explicitTriggeredFlow = triggeredFlow && triggeredFlow.definition.trigger.type !== "ANY"
       ? triggeredFlow
       : null;
+
+    let unconsumedInboundText = conversation.flowAwaitingVariable ? "" : text;
 
     if (explicitTriggeredFlow) {
       flow = explicitTriggeredFlow;
@@ -358,6 +468,18 @@ export class InboundMessageService {
       }
     }
     if (!flow) return false;
+
+    // REGLA: Para bots de campaña de votantes, SOLO se responde si el número está registrado en la base de datos [PersonaMovilizada]
+    if (this.isVoterSupportFlow(flow)) {
+      const isRegisteredVoter = Boolean(variables._idPersonaMovilizada || variables.nombre || variables.nombre_votante || variables.estado_apoyo);
+      if (!isRegisteredVoter) {
+        logger.info(
+          { phoneDigits, flowId: flow.id, flowName: flow.name },
+          "Número no registrado en BD [PersonaMovilizada]. El bot de campaña no responderá a este número.",
+        );
+        return false;
+      }
+    }
 
     for (let guard = 0; guard < 50 && index < flow.definition.steps.length; guard += 1) {
       const step = flow.definition.steps[index];
@@ -382,7 +504,19 @@ export class InboundMessageService {
         return true;
       }
       if (step.type === "MENU") {
-        const selectedValue = variables[step.variable]?.trim();
+        let selectedValue = variables[step.variable]?.trim();
+
+        // Si la conversación no tiene una variable de menú guardada previamente (por ejemplo,
+        // cuando el usuario recibió una campaña masiva previa y responde directamente con su opción),
+        // evaluamos de inmediato si el texto entrante coincide con alguna de las opciones del menú.
+        if (!selectedValue && unconsumedInboundText) {
+          const directMatch = step.options.find((option) => matchesMenuOption(unconsumedInboundText, option));
+          if (directMatch) {
+            selectedValue = unconsumedInboundText;
+            unconsumedInboundText = ""; // consumido para evitar repeticiones en bucles internos
+          }
+        }
+
         if (!selectedValue) {
           await this.sendText(socket, conversation, replyJid, interpolate(step.text, variables), inboundMessageId);
           await this.conversations.saveFlowState(conversation.id, {
@@ -398,12 +532,8 @@ export class InboundMessageService {
         if (!selectedOption) {
           delete variables[step.variable];
           const retryText = step.invalidText?.trim()
-            ? `${step.invalidText.trim()}
-
-${step.text}`
-            : `Opción inválida. Intenta nuevamente.
-
-${step.text}`;
+            ? `${step.invalidText.trim()}\n\n${step.text}`
+            : `Opción inválida. Intenta nuevamente.\n\n${step.text}`;
           await this.sendText(socket, conversation, replyJid, interpolate(retryText, variables), inboundMessageId);
           await this.conversations.saveFlowState(conversation.id, {
             flowId: flow.id,
@@ -419,6 +549,11 @@ ${step.text}`;
           logger.error({ flowId: flow.id, stepId: step.id, nextStepId: selectedOption.nextStepId }, "Destino de menú inexistente.");
           await this.conversations.clearFlowState(conversation.id);
           return true;
+        }
+
+        // Sincronización en Base de Datos SQL Server (PersonaMovilizada) y API .NET Core
+        if (phoneDigits) {
+          await this.syncVoterChoice(phoneDigits, flow, step, selectedOption, variables);
         }
 
         // La respuesta de un menú es un evento consumible, no una variable permanente.

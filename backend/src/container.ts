@@ -42,6 +42,7 @@ import { PrismaExternalConnectorRepository } from "./infrastructure/repositories
 import { PrismaRecurringCampaignRepository } from "./infrastructure/repositories/prisma-recurring-campaign.repository.js";
 import { RecurringCampaignService } from "./application/services/recurring-campaign.service.js";
 import { Voto1x10Client } from "./infrastructure/voto1x10/voto1x10-client.js";
+import { Voto1x10DbRepository } from "./infrastructure/voto1x10/voto1x10-db.repository.js";
 import { Voto1x10HierarchyService } from "./application/services/voto1x10-hierarchy.service.js";
 import { TenantCapacityService } from "./application/services/tenant-capacity.service.js";
 import { MemoryCoordinationBus } from "./infrastructure/coordination/memory-coordination-bus.js";
@@ -161,6 +162,7 @@ export function buildContainer() {
     phoneNormalizer,
     voto1x10HierarchyService,
   );
+  const voto1x10DbRepository = new Voto1x10DbRepository(prisma);
   const inboundService = new InboundMessageService(
     conversations,
     sessions,
@@ -170,6 +172,7 @@ export function buildContainer() {
     {},
     externalConnectorService,
     voto1x10Client,
+    voto1x10DbRepository,
   );
   const mediaReuseService = new MediaReuseService(
     mediaAssets,

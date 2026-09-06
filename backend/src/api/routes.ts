@@ -689,13 +689,23 @@ export function createRoutes(container: AppContainer): Router {
           await container.whatsapp.sessionGateway.stop(session.id);
         } catch {}
         try {
-          await container.prisma.whatsAppSession.delete({ where: { id: session.id } });
-        } catch {
+          await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
+          await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
+        } catch {}
+        try {
           await container.prisma.whatsAppSession.update({
             where: { id: session.id },
-            data: { status: "DELETED", qrCode: null, phoneE164: null, whatsappJid: null },
+            data: {
+              status: "DELETED",
+              deletedAt: new Date(),
+              qrCode: null,
+              phoneE164: null,
+              whatsappJid: null,
+              leaseOwner: null,
+              leaseExpiresAt: null,
+            },
           });
-        }
+        } catch {}
       }
       response.status(204).send();
     }),
