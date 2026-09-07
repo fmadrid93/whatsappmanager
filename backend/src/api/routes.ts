@@ -816,9 +816,14 @@ export function createRoutes(container: AppContainer): Router {
           const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
           await socket.sendPresenceUpdate("composing", jid).catch(() => {});
           await socket.sendMessage(jid, { text: message });
+
+          // Si el destinatario está en la BD de campaña en estado PENDIENTE, marcarlo automáticamente como CONSULTADO
+          if (container.repositories.voto1x10DbRepository) {
+            void container.repositories.voto1x10DbRepository.marcarComoConsultadosPorCelulares([to]);
+          }
+
           return response.json({ ok: true, sent: true });
         }
-
 
         const fresh = session || (await resolveSession(sessionId));
         if (!fresh) {
@@ -844,7 +849,6 @@ export function createRoutes(container: AppContainer): Router {
           });
         }
 
-
         await container.prisma.messageQueue.create({
           data: {
             tenantId: fresh.tenantId,
@@ -863,10 +867,40 @@ export function createRoutes(container: AppContainer): Router {
             idempotencyKey: crypto.randomUUID(),
           },
         });
+
+        // Marcar automáticamente como CONSULTADO al encolar
+        if (container.repositories.voto1x10DbRepository) {
+          void container.repositories.voto1x10DbRepository.marcarComoConsultadosPorCelulares([to]);
+        }
+
         response.json({ ok: true, sent: true, queued: true });
       } catch (err: any) {
         response.status(500).json({ error: err?.message || "Error al enviar mensaje" });
       }
+    }),
+  );
+
+  router.post(
+    ["/WhatsApp/marcar-consultados", "/api/WhatsApp/marcar-consultados", "/marcar-consultados", "/api/marcar-consultados"],
+    asyncHandler(async (request, response) => {
+      const body = request.body || {};
+      const celulares: string[] = Array.isArray(body.celulares)
+        ? body.celulares
+        : body.celular
+          ? [body.celular]
+          : [];
+
+      let modificados = 0;
+      if (container.repositories.voto1x10DbRepository && celulares.length > 0) {
+        modificados = await container.repositories.voto1x10DbRepository.marcarComoConsultadosPorCelulares(celulares);
+      }
+
+      response.json({
+        ok: true,
+        exito: 1,
+        modificados,
+        mensaje: `Se marcaron ${modificados} contacto(s) como CONSULTADO en la base de datos.`,
+      });
     }),
   );
 

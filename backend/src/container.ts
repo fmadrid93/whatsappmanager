@@ -234,6 +234,7 @@ export function buildContainer() {
       integrations,
       externalConnectors,
       recurringCampaigns,
+      voto1x10DbRepository,
     },
     services: {
       authService,

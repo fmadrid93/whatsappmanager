@@ -126,4 +126,33 @@ export class Voto1x10DbRepository {
       return null;
     }
   }
+
+  async marcarComoConsultadosPorCelulares(celulares: string[]): Promise<number> {
+    if (!celulares || celulares.length === 0) return 0;
+    const cleanList = celulares.map((c) => String(c || "").trim()).filter(Boolean);
+    if (cleanList.length === 0) return 0;
+
+    const joined = cleanList.map((c) => c.replace(/'/g, "''")).join(",");
+    try {
+      const result = await this.prisma.$executeRawUnsafe(
+        `UPDATE pm
+         SET pm.EstadoApoyo = 'CONSULTADO', pm.FechaUpdate = GETDATE()
+         FROM [AppCampana1x10].[dbo].[PersonaMovilizada] pm
+         WHERE (pm.EstadoApoyo = 'PENDIENTE' OR pm.EstadoApoyo IS NULL OR pm.EstadoApoyo = '')
+           AND (pm.Activo IS NULL OR pm.Activo = 1)
+           AND EXISTS (
+               SELECT 1 FROM STRING_SPLIT('${joined}', ',') s
+               WHERE 
+                   pm.Celular = s.value
+                   OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(pm.Celular, ''), ' ', ''), '-', ''), '+', ''), '(', ''), ')', '') = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(s.value, ' ', ''), '-', ''), '+', ''), '(', ''), ')', '')
+                   OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(pm.Celular, ''), ' ', ''), '-', ''), '+', ''), '(', ''), ')', '') LIKE '%' + RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(s.value, ' ', ''), '-', ''), '+', ''), '(', ''), ')', ''), 7)
+           )`
+      );
+      logger.info({ totalEnviados: cleanList.length, actualizadosBD: result }, "Votantes marcados como CONSULTADO en [PersonaMovilizada].");
+      return result;
+    } catch (error) {
+      logger.error({ error }, "Error al marcar votantes como CONSULTADO.");
+      return 0;
+    }
+  }
 }
