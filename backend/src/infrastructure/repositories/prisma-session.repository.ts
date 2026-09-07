@@ -305,4 +305,35 @@ export class PrismaSessionRepository implements ISessionRepository {
     });
     return link ? mapSession(link.session) : null;
   }
+
+  async expireStalePendingSessions(maxAgeMs = 120_000): Promise<number> {
+    const threshold = new Date(Date.now() - maxAgeMs);
+    const result = await this.prisma.whatsAppSession.updateMany({
+      where: {
+        deletedAt: null,
+        status: { in: ["QR_REQUIRED", "PAIRING_CODE", "CONNECTING", "STARTING"] },
+        phoneE164: null,
+        whatsappJid: null,
+        OR: [
+          { qrUpdatedAt: { lt: threshold } },
+          { pairingCodeUpdatedAt: { lt: threshold } },
+          { updatedAt: { lt: threshold } },
+        ],
+      },
+      data: {
+        status: "DISCONNECTED",
+        qrCode: null,
+        qrUpdatedAt: null,
+        pairingCode: null,
+        pairingCodeUpdatedAt: null,
+        disconnectReason: "qrTimeout",
+        lastConnectionCode: 408,
+        lastConnectionError: "El código QR expiró sin ser escaneado. Presiona Revincular para generar uno nuevo.",
+        disconnectedAt: new Date(),
+        leaseOwner: null,
+        leaseExpiresAt: null,
+      },
+    });
+    return result.count;
+  }
 }

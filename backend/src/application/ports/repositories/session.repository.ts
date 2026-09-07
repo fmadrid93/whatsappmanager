@@ -66,4 +66,5 @@ export interface ISessionRepository {
   archive(sessionId: string, tenantId: string): Promise<void>;
   listConnectedOwnedByWorker(workerId: string): Promise<SessionRecord[]>;
   findFailoverSession(campaignId: string, failedSessionId: string): Promise<SessionRecord | null>;
+  expireStalePendingSessions(maxAgeMs?: number): Promise<number>;
 }

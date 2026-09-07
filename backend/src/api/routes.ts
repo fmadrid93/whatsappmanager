@@ -39,6 +39,7 @@ export const jerarquiaSeleccionSchema = z.object({
   movilizadorIds: z.array(z.coerce.number().int()).default([]),
   soloSinMensaje: z.boolean().optional().default(true),
   estadoApoyo: z.string().optional(),
+  estadoDiaD: z.string().optional(),
 });
 
 const recurringCampaignCreateBase = {
@@ -416,6 +417,8 @@ export function createRoutes(container: AppContainer): Router {
             ];
           }
         }
+
+        await container.repositories.sessions.expireStalePendingSessions();
 
         const all = await container.prisma.whatsAppSession.findMany({
           where: whereClause,

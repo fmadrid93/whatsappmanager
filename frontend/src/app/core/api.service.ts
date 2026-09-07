@@ -52,6 +52,7 @@ export interface Voto1x10SeleccionInput {
   movilizadorIds: number[];
   soloSinMensaje?: boolean;
   estadoApoyo?: string;
+  estadoDiaD?: string;
 }
 
 export interface RecurringCampaignRecord {

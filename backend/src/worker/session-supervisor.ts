@@ -37,6 +37,7 @@ export class SessionSupervisor {
     if (this.running) return;
     this.running = true;
     try {
+      await this.sessions.expireStalePendingSessions();
       const expiresAt = () => new Date(Date.now() + this.leaseSeconds * 1000);
       const activeWorkerIds = this.shardMode === "AUTO"
         ? (await this.workerNodes.listActive(new Date())).map((node) => node.id)

@@ -26,6 +26,7 @@ export interface SeleccionJerarquica {
   movilizadorIds: number[];
   soloSinMensaje?: boolean;
   estadoApoyo?: string;
+  estadoDiaD?: string;
 }
 
 export interface ContactosPorSeleccionResult {
@@ -118,11 +119,22 @@ export class Voto1x10HierarchyService {
           if (!phone || contactosPorTelefono.has(phone)) continue;
 
           const estadoPersona = (persona.estadoApoyo ?? "").trim().toUpperCase();
+          const estadoDiaD = (persona.estadoDiaD ?? "").trim().toUpperCase();
 
-          // Filtro por estado de apoyo
+          // Filtro por estado de apoyo o estado del Día D (si aún no votó)
           if (filtroEstado === "PENDIENTE" || (soloSinMensaje && !filtroEstado)) {
             // Solo personas que aún no han recibido mensaje / están pendientes
             if (estadoPersona && estadoPersona !== "PENDIENTE") {
+              continue;
+            }
+          } else if (filtroEstado === "NO_VOTO") {
+            // Solo personas que todavía NO han votado (excluye YA_VOTO y VOTO)
+            if (estadoDiaD === "YA_VOTO" || estadoDiaD === "VOTO") {
+              continue;
+            }
+          } else if (filtroEstado === "YA_VOTO") {
+            // Solo personas que ya votaron
+            if (estadoDiaD !== "YA_VOTO" && estadoDiaD !== "VOTO") {
               continue;
             }
           } else if (filtroEstado === "CONSULTADO") {

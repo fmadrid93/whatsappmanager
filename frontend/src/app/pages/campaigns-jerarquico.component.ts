@@ -145,6 +145,14 @@ import {
                     </div>
                   </label>
 
+                  <label class="audience-card" [class.selected]="filtroAudiencia() === 'NO_VOTO'">
+                    <input type="radio" name="filtroAudiencia" [value]="'NO_VOTO'" [checked]="filtroAudiencia() === 'NO_VOTO'" (change)="setFiltroAudiencia('NO_VOTO')" />
+                    <div class="audience-content">
+                      <span class="audience-label">🗳️ Solo a los que todavía NO votaron (Día D)</span>
+                      <small class="audience-sub">Filtra a las personas registradas en la jerarquía que aún no han votado en el Día D.</small>
+                    </div>
+                  </label>
+
                   <label class="audience-card" [class.selected]="filtroAudiencia() === 'TODOS'">
                     <input type="radio" name="filtroAudiencia" [value]="'TODOS'" [checked]="filtroAudiencia() === 'TODOS'" (change)="setFiltroAudiencia('TODOS')" />
                     <div class="audience-content">
@@ -820,7 +828,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
   readonly movilizadorIds = signal<number[]>([]);
 
   /** Filtro de estado de apoyo / audiencia */
-  readonly filtroAudiencia = signal<"PENDIENTE" | "TODOS" | "CONSULTADO">("PENDIENTE");
+  readonly filtroAudiencia = signal<"PENDIENTE" | "NO_VOTO" | "TODOS" | "CONSULTADO">("PENDIENTE");
 
   readonly totalSeleccionados = computed(() =>
     this.territorioIds().length + this.administradorIds().length + this.gerenteIds().length + this.movilizadorIds().length);
@@ -1013,13 +1021,14 @@ export class CampaignsJerarquicoComponent implements OnInit {
     this.loadCampanias();
   }
 
-  audienciaLabel(tipo: "PENDIENTE" | "TODOS" | "CONSULTADO"): string {
+  audienciaLabel(tipo: "PENDIENTE" | "NO_VOTO" | "TODOS" | "CONSULTADO"): string {
     if (tipo === "PENDIENTE") return "Solo sin mensaje enviado (Pendientes)";
+    if (tipo === "NO_VOTO") return "Solo a los que todavía NO votaron (Día D)";
     if (tipo === "CONSULTADO") return "Ya consultados (Re-contacto)";
     return "Todos los registrados";
   }
 
-  setFiltroAudiencia(tipo: "PENDIENTE" | "TODOS" | "CONSULTADO"): void {
+  setFiltroAudiencia(tipo: "PENDIENTE" | "NO_VOTO" | "TODOS" | "CONSULTADO"): void {
     this.filtroAudiencia.set(tipo);
     if (this.totalSeleccionados() > 0) {
       this.cargarPersonas();
@@ -1087,7 +1096,8 @@ export class CampaignsJerarquicoComponent implements OnInit {
       gerenteIds: this.gerenteIds(),
       movilizadorIds: this.movilizadorIds(),
       soloSinMensaje: aud === "PENDIENTE",
-      estadoApoyo: aud,
+      estadoApoyo: aud === "NO_VOTO" ? undefined : aud,
+      estadoDiaD: aud === "NO_VOTO" ? "NO_VOTO" : undefined,
     }).subscribe({
       next: (resultado) => {
         this.loadingContactos.set(false);
@@ -1422,7 +1432,8 @@ export class CampaignsJerarquicoComponent implements OnInit {
         gerenteIds: this.gerenteIds(),
         movilizadorIds: this.movilizadorIds(),
         soloSinMensaje: aud === "PENDIENTE",
-        estadoApoyo: aud,
+        estadoApoyo: aud === "NO_VOTO" ? undefined : aud,
+        estadoDiaD: aud === "NO_VOTO" ? "NO_VOTO" : undefined,
       },
       sessionIds: this.selectedSessionIds(),
       message: { text: this.messageText },

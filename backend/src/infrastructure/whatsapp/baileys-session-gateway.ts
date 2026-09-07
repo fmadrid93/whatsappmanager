@@ -82,6 +82,7 @@ export class BaileysSessionGateway implements ISessionGateway {
   private readonly stoppingSessions = new Set<string>();
   private readonly restartingSessions = new Set<string>();
   private readonly startingSessions = new Set<string>();
+  private readonly qrTimeoutTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly sessions: ISessionRepository,
@@ -93,6 +94,14 @@ export class BaileysSessionGateway implements ISessionGateway {
     private readonly failover: FailoverService,
     private readonly workerId: string,
   ) {}
+
+  private clearQrTimeoutTimer(sessionId: string): void {
+    const timer = this.qrTimeoutTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.qrTimeoutTimers.delete(sessionId);
+    }
+  }
 
   async start(sessionId: string): Promise<void> {
     this.stoppingSessions.delete(sessionId);
@@ -208,6 +217,7 @@ export class BaileysSessionGateway implements ISessionGateway {
   }
 
   async stop(sessionId: string): Promise<void> {
+    this.clearQrTimeoutTimer(sessionId);
     if (!this.registry.has(sessionId)) {
       await this.sessions.releaseLease(sessionId, this.workerId);
       return;
@@ -285,10 +295,38 @@ export class BaileysSessionGateway implements ISessionGateway {
           if (s?.pairingMethod !== "CODE") {
             await this.sessions.saveQr(sessionId, update.qr);
             logger.info({ sessionId }, "QR actualizado.");
+
+            // Programar expiración automática del QR tras 120 segundos si el usuario no escanea
+            this.clearQrTimeoutTimer(sessionId);
+            const timer = setTimeout(() => {
+              void (async () => {
+                try {
+                  const current = await this.sessions.findById(sessionId);
+                  if (current && current.status !== "CONNECTED") {
+                    logger.info({ sessionId }, "El código QR expiró (TTL de 2 minutos alcanzado). Pasando a DISCONNECTED.");
+                    await this.stop(sessionId);
+                    await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
+                      disconnectReason: "qrTimeout",
+                      disconnectedAt: new Date(),
+                      lastConnectionCode: 408,
+                      lastConnectionError: "El código QR expiró sin ser escaneado. Presiona Revincular cuando estés listo.",
+                      clearQr: true,
+                      clearPairingCode: true,
+                    });
+                  }
+                } catch (err) {
+                  logger.warn({ err, sessionId }, "Error al expirar QR por timeout.");
+                } finally {
+                  this.qrTimeoutTimers.delete(sessionId);
+                }
+              })();
+            }, 120_000);
+            this.qrTimeoutTimers.set(sessionId, timer);
           }
         }
 
         if (update.connection === "open") {
+          this.clearQrTimeoutTimer(sessionId);
           const current = await this.sessions.findById(sessionId);
           if (current?.status === "QUARANTINED") {
             logger.warn(
@@ -322,6 +360,7 @@ export class BaileysSessionGateway implements ISessionGateway {
         }
 
         if (update.connection === "close") {
+          this.clearQrTimeoutTimer(sessionId);
           this.registry.delete(sessionId);
           const error = update.lastDisconnect?.error;
           const statusCode = disconnectCode(error);

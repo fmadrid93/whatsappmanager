@@ -10,6 +10,7 @@ export interface RecurringCampaignJerarquiaSelection {
   movilizadorIds: number[];
   soloSinMensaje?: boolean;
   estadoApoyo?: string;
+  estadoDiaD?: string;
 }
 
 export interface RecurringCampaignRecord {
