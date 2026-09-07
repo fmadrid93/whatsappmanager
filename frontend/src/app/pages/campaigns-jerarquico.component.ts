@@ -215,12 +215,18 @@ import {
                   Todas ({{ sessions().length }})
                 </button>
               </div>
-              <select class="estado-select" [ngModel]="filtroEstadoSesion()" (ngModelChange)="filtroEstadoSesion.set($event)" name="cjFiltroEstadoSesion" [ngModelOptions]="{ standalone: true }">
-                <option value="">Todos los estados</option>
-                @for (estado of estadosDisponibles(); track estado) {
-                  <option [value]="estado">{{ sessionStatusLabel(estado) }}</option>
-                }
-              </select>
+              <p-multiSelect
+                [options]="estadosDisponibles()"
+                [ngModel]="filtroEstadosSesion()"
+                (ngModelChange)="filtroEstadosSesion.set($event)"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Filtrar por estados (múltiple)..."
+                [showClear]="true"
+                display="chip"
+                [maxSelectedLabels]="1"
+                styleClass="estado-multiselect"
+              />
             </div>
             @if (!mostrarTodasLasSesiones() && haySeleccionJerarquica() && sesionesDeElegidosCount() === 0) {
               <div class="muted small">Ninguno de los elegidos arriba tiene una sesión de WhatsApp propia todavía.</div>
@@ -724,7 +730,7 @@ import {
     /* SESSIONS */
     .session-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.4rem}
     .session-toggle{display:flex;gap:.35rem;flex-wrap:wrap}
-    .estado-select{border:1px solid #cfd8e3;border-radius:9px;padding:.4rem .6rem;font-size:.78rem;background:#fff;min-width:150px}
+    .estado-multiselect{min-width:210px}
     .session-options{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:.3rem;border:1px solid #e2e8f0;padding:.5rem;border-radius:8px;background:#f8fafc}
     .session-name{font-weight:600;color:#1e293b}
     .session-pill{font-size:.72rem;padding:.15rem .45rem;border-radius:999px;background:#e2e8f0;color:#475569}
@@ -934,13 +940,26 @@ export class CampaignsJerarquicoComponent implements OnInit {
   private readonly sesionesBase = computed<SessionRecord[]>(() =>
     this.mostrarTodasLasSesiones() || !this.haySeleccionJerarquica() ? this.sessions() : this.coincidenciasSesionesElegidos());
 
-  readonly sesionesDeSeleccionados = computed<SessionRecord[]>(() => {
-    const base = this.sesionesBase();
-    const estado = this.filtroEstadoSesion();
-    return estado ? base.filter((s) => s.status === estado) : base;
+  readonly filtroEstadosSesion = signal<string[]>([]);
+
+  readonly estadosDisponibles = computed<{ value: string; label: string }[]>(() => {
+    const raw = [...new Set(this.sesionesBase().map((s) => s.status))];
+    raw.sort((a, b) => {
+      if (a === "CONNECTED") return -1;
+      if (b === "CONNECTED") return 1;
+      return a.localeCompare(b);
+    });
+    return raw.map((st) => ({
+      value: st,
+      label: `${this.sessionStatusLabel(st)} (${this.sesionesBase().filter((s) => s.status === st).length})`,
+    }));
   });
 
-  readonly estadosDisponibles = computed<string[]>(() => [...new Set(this.sesionesBase().map((s) => s.status))]);
+  readonly sesionesDeSeleccionados = computed<SessionRecord[]>(() => {
+    const base = this.sesionesBase();
+    const estados = this.filtroEstadosSesion();
+    return estados.length > 0 ? base.filter((s) => estados.includes(s.status)) : base;
+  });
 
   readonly mediaItems = signal<MediaRecord[]>([]);
   readonly selectedMediaAssetId = signal("");

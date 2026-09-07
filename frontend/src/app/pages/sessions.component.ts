@@ -1,15 +1,16 @@
-﻿import { Component, OnDestroy, OnInit, inject, signal } from "@angular/core";
+import { Component, OnDestroy, OnInit, computed, inject, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { ButtonModule } from "primeng/button";
 import { CardModule } from "primeng/card";
 import { InputTextModule } from "primeng/inputtext";
+import { MultiSelectModule } from "primeng/multiselect";
 import { TableModule } from "primeng/table";
 import { MessageService } from "primeng/api";
 import { ApiService, type SessionRecord } from "../core/api.service";
 
 @Component({
   standalone: true,
-  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, TableModule],
+  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, TableModule, MultiSelectModule],
   template: `
     <main class="page">
       <div class="page-header">
@@ -86,8 +87,67 @@ import { ApiService, type SessionRecord } from "../core/api.service";
         </p-card>
       </div>
 
-      <p-card header="Sesiones registradas" styleClass="session-table">
-        <p-table [value]="sessions()" [tableStyle]="{ 'min-width': '1050px' }">
+      <p-card styleClass="session-table">
+        <ng-template pTemplate="header">
+          <div class="table-card-header">
+            <div>
+              <h2 class="card-title">Sesiones registradas</h2>
+              <div class="muted small">{{ sesionesFiltradas().length }} de {{ sessions().length }} sesión(es) visible(s)</div>
+            </div>
+            <div class="table-card-filters">
+              <div class="search-box">
+                <i class="pi pi-search search-icon"></i>
+                <input
+                  pInputText
+                  type="text"
+                  [ngModel]="filtroBusqueda()"
+                  (ngModelChange)="filtroBusqueda.set($event)"
+                  placeholder="Buscar por nombre o número..."
+                  class="search-input"
+                />
+                @if (filtroBusqueda()) {
+                  <button type="button" class="clear-btn" (click)="filtroBusqueda.set('')">×</button>
+                }
+              </div>
+
+              <div class="multiselect-box">
+                <p-multiSelect
+                  [options]="statusOptions()"
+                  [ngModel]="filtroEstados()"
+                  (ngModelChange)="filtroEstados.set($event)"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Filtrar estados (múltiple)"
+                  [showClear]="true"
+                  display="chip"
+                  [maxSelectedLabels]="2"
+                  styleClass="status-multiselect"
+                />
+              </div>
+
+              <div class="quick-filters">
+                <button
+                  type="button"
+                  class="quick-filter-btn"
+                  [class.active]="filtroEstados().length === 0"
+                  (click)="filtroEstados.set([])"
+                >
+                  Todas ({{ sessions().length }})
+                </button>
+                <button
+                  type="button"
+                  class="quick-filter-btn"
+                  [class.active]="esSoloConectadas()"
+                  (click)="filtroEstados.set(['CONNECTED'])"
+                >
+                  🟢 Conectadas ({{ conectadasCount() }})
+                </button>
+              </div>
+            </div>
+          </div>
+        </ng-template>
+
+        <p-table [value]="sesionesFiltradas()" [tableStyle]="{ 'min-width': '1050px' }">
           <ng-template #header>
             <tr>
               <th>Nombre</th>
@@ -151,12 +211,95 @@ import { ApiService, type SessionRecord } from "../core/api.service";
               </td>
             </tr>
           </ng-template>
+          <ng-template #emptymessage>
+            <tr>
+              <td colspan="7" class="text-center p-4 muted">
+                No hay sesiones que coincidan con los filtros seleccionados.
+              </td>
+            </tr>
+          </ng-template>
         </p-table>
       </p-card>
     </main>
   `,
   styles: [`
     .session-table { display: block; margin-top: 1rem; }
+    .table-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 1.25rem 1.5rem 0.5rem 1.5rem;
+    }
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0;
+    }
+    .table-card-filters {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .search-box {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+    .search-icon {
+      position: absolute;
+      left: 0.75rem;
+      color: #94a3b8;
+      font-size: 0.85rem;
+      z-index: 2;
+    }
+    .search-input {
+      padding-left: 2.25rem !important;
+      padding-right: 1.75rem !important;
+      font-size: 0.85rem;
+      width: 230px;
+    }
+    .clear-btn {
+      position: absolute;
+      right: 0.5rem;
+      background: none;
+      border: none;
+      font-size: 1.1rem;
+      color: #94a3b8;
+      cursor: pointer;
+      z-index: 2;
+    }
+    .multiselect-box {
+      min-width: 240px;
+    }
+    .quick-filters {
+      display: flex;
+      gap: 0.35rem;
+    }
+    .quick-filter-btn {
+      padding: 0.4rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      background: #f8fafc;
+      color: #475569;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .quick-filter-btn:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+    .quick-filter-btn.active {
+      background: #0284c7;
+      border-color: #0284c7;
+      color: #ffffff;
+    }
+
     .mode-pill { padding: .35rem .65rem; border-radius: 999px; background: #fff3cd; font-weight: 700; }
     .mode-pill.real { background: #d1fae5; color: #065f46; }
     .notice { padding: .8rem 1rem; border-radius: .55rem; margin: .75rem 0; }
@@ -182,6 +325,52 @@ export class SessionsComponent implements OnInit, OnDestroy {
   readonly selectedError = signal("");
   readonly selectedErrorCode = signal<number | undefined>(undefined);
   readonly gatewayMode = signal("");
+
+  readonly filtroEstados = signal<string[]>([]);
+  readonly filtroBusqueda = signal<string>("");
+
+  readonly conectadasCount = computed(() => this.sessions().filter((s) => s.status === "CONNECTED").length);
+
+  readonly esSoloConectadas = computed(() => {
+    const estados = this.filtroEstados();
+    return estados.length === 1 && estados[0] === "CONNECTED";
+  });
+
+  readonly statusOptions = computed(() => {
+    const rawStatuses = [...new Set(this.sessions().map((s) => s.status))];
+    rawStatuses.sort((a, b) => {
+      if (a === "CONNECTED") return -1;
+      if (b === "CONNECTED") return 1;
+      return a.localeCompare(b);
+    });
+
+    return rawStatuses.map((st) => ({
+      value: st,
+      label: `${this.sessionStatusLabel(st)} (${this.sessions().filter((s) => s.status === st).length})`,
+    }));
+  });
+
+  readonly sesionesFiltradas = computed(() => {
+    const items = this.sessions();
+    const estados = this.filtroEstados();
+    const busqueda = this.filtroBusqueda().trim().toLowerCase();
+
+    return items.filter((session) => {
+      if (estados.length > 0 && !estados.includes(session.status)) {
+        return false;
+      }
+      if (busqueda) {
+        const name = session.name.toLowerCase();
+        const expected = (session.expectedPhoneE164 ?? "").toLowerCase();
+        const phone = (session.phoneE164 ?? "").toLowerCase();
+        const status = this.sessionStatusLabel(session.status).toLowerCase();
+        if (!name.includes(busqueda) && !expected.includes(busqueda) && !phone.includes(busqueda) && !status.includes(busqueda)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  });
 
   name = "";
   expectedPhone = "";
@@ -321,6 +510,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
     this.selectedPairingCode.set(null);
     this.selectedStatus.set("");
     this.selectedError.set("");
+    this.selectedErrorCode.set(undefined);
     if (this.pairingTimer) clearInterval(this.pairingTimer);
     this.pairingTimer = undefined;
   }
