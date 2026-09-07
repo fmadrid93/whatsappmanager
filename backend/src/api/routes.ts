@@ -37,6 +37,8 @@ export const jerarquiaSeleccionSchema = z.object({
   administradorIds: z.array(z.coerce.number().int()).default([]),
   gerenteIds: z.array(z.coerce.number().int()).default([]),
   movilizadorIds: z.array(z.coerce.number().int()).default([]),
+  soloSinMensaje: z.boolean().optional().default(true),
+  estadoApoyo: z.string().optional(),
 });
 
 const recurringCampaignCreateBase = {

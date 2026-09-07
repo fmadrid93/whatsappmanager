@@ -1,4 +1,4 @@
-﻿import { Injectable } from "@angular/core";
+import { Injectable } from "@angular/core";
 import { HttpClient, HttpHeaders } from "@angular/common/http";
 import { switchMap } from "rxjs";
 
@@ -50,6 +50,8 @@ export interface Voto1x10SeleccionInput {
   administradorIds: number[];
   gerenteIds: number[];
   movilizadorIds: number[];
+  soloSinMensaje?: boolean;
+  estadoApoyo?: string;
 }
 
 export interface RecurringCampaignRecord {

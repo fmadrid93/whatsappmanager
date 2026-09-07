@@ -101,7 +101,7 @@ export class Voto1x10DbRepository {
               OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(Celular, ''), ' ', ''), '-', ''), '+', ''), '(', ''), ')', '') LIKE '%${last8}'
               OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(Celular, ''), ' ', ''), '-', ''), '+', ''), '(', ''), ')', '') LIKE '%${last7}'
             )
-            AND (UPPER(RTRIM(LTRIM(ISNULL(EstadoApoyo, '')))) IN ('CONSULTADO', 'PENDIENTE', '') OR EstadoApoyo IS NULL);
+            AND (Activo IS NULL OR Activo = 1);
 
          SELECT TOP 1 * FROM @Updated;`,
       );

@@ -8,6 +8,8 @@ export interface RecurringCampaignJerarquiaSelection {
   administradorIds: number[];
   gerenteIds: number[];
   movilizadorIds: number[];
+  soloSinMensaje?: boolean;
+  estadoApoyo?: string;
 }
 
 export interface RecurringCampaignRecord {

@@ -33,6 +33,7 @@ export interface Voto1x10Persona {
   apellidos?: string;
   celular?: string;
   idUsuarioMovilizador?: number;
+  estadoApoyo?: string;
 }
 
 export interface Voto1x10PersonaRepetida {

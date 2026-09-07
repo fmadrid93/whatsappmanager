@@ -62,11 +62,8 @@ export function isRestartRequiredStatus(statusCode: number | undefined): boolean
   return (
     statusCode === DisconnectReason.restartRequired ||
     statusCode === DisconnectReason.connectionClosed ||
-    statusCode === DisconnectReason.connectionLost ||
-    statusCode === DisconnectReason.timedOut ||
     statusCode === DisconnectReason.connectionReplaced ||
     statusCode === 440 ||
-    statusCode === 408 ||
     statusCode === 428 ||
     statusCode === 515 ||
     statusCode === 503
@@ -389,9 +386,24 @@ export class BaileysSessionGateway implements ISessionGateway {
             });
             await this.sessions.releaseLease(sessionId, this.workerId);
           } else if (!intentionallyStopped) {
-            // Desconexión transitoria: reintentar reconexión conservando la sesión activa
-            logger.info({ sessionId, statusCode }, "Desconexión transitoria de socket; reintentando reconexión automática.");
-            this.scheduleRestartRequired(sessionId);
+            const isUnauthenticated = !currentSession?.phoneE164 && !currentSession?.whatsappJid;
+            if (isUnauthenticated) {
+              logger.info({ sessionId, statusCode }, "El código QR o emparejamiento expiró o se cerró sin vincular. Pasando a DISCONNECTED.");
+              await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
+                disconnectReason: "qrTimeout",
+                disconnectedAt: new Date(),
+                lastConnectionCode: statusCode ?? 408,
+                lastConnectionError: "El código QR expiró sin ser escaneado. Genera uno nuevo cuando estés listo.",
+                lastConnectionAt: new Date(),
+                clearQr: true,
+                clearPairingCode: true,
+              });
+              await this.sessions.releaseLease(sessionId, this.workerId);
+            } else {
+              // Desconexión transitoria de sesión vinculada: reintentar reconexión conservando la sesión activa
+              logger.info({ sessionId, statusCode }, "Desconexión transitoria de sesión vinculada; reintentando reconexión automática.");
+              this.scheduleRestartRequired(sessionId);
+            }
           } else {
             await this.sessions.releaseLease(sessionId, this.workerId);
           }

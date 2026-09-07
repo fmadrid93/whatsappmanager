@@ -24,6 +24,8 @@ export interface SeleccionJerarquica {
   administradorIds: number[];
   gerenteIds: number[];
   movilizadorIds: number[];
+  soloSinMensaje?: boolean;
+  estadoApoyo?: string;
 }
 
 export interface ContactosPorSeleccionResult {
@@ -100,6 +102,9 @@ export class Voto1x10HierarchyService {
     const contactosPorTelefono = new Map<string, { name?: string; phone: string }>();
     let personaCount = 0;
 
+    const soloSinMensaje = seleccion.soloSinMensaje ?? true;
+    const filtroEstado = (seleccion.estadoApoyo ?? "").trim().toUpperCase();
+
     for (let i = 0; i < movilizadorIds.length; i += CONCURRENCIA_CONSULTA_PERSONAS) {
       const lote = movilizadorIds.slice(i, i + CONCURRENCIA_CONSULTA_PERSONAS);
       const resultados = await Promise.all(
@@ -111,6 +116,25 @@ export class Voto1x10HierarchyService {
           personaCount += 1;
           const phone = (persona.celular ?? "").trim();
           if (!phone || contactosPorTelefono.has(phone)) continue;
+
+          const estadoPersona = (persona.estadoApoyo ?? "").trim().toUpperCase();
+
+          // Filtro por estado de apoyo
+          if (filtroEstado === "PENDIENTE" || (soloSinMensaje && !filtroEstado)) {
+            // Solo personas que aún no han recibido mensaje / están pendientes
+            if (estadoPersona && estadoPersona !== "PENDIENTE") {
+              continue;
+            }
+          } else if (filtroEstado === "CONSULTADO") {
+            if (estadoPersona !== "CONSULTADO") {
+              continue;
+            }
+          } else if (filtroEstado && filtroEstado !== "TODOS") {
+            if (estadoPersona !== filtroEstado) {
+              continue;
+            }
+          }
+
           const name = `${persona.nombres ?? ""} ${persona.apellidos ?? ""}`.trim();
           contactosPorTelefono.set(phone, { name: name || undefined, phone });
         }
