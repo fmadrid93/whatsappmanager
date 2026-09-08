@@ -68,20 +68,38 @@ export class PrismaCampaignRepository implements ICampaignRepository {
         data: input.sessionIds.map((sessionId, index) => ({ campaignId: campaign.id, sessionId, priority: index + 1 })),
       });
 
-      const queueRows = input.contacts.map((contact, index) => ({
-        tenantId: input.tenantId,
-        campaignId: campaign.id,
-        assignedSessionId: input.sessionIds[index % input.sessionIds.length],
-        mediaAssetId: input.mediaAssetId,
-        contactName: contact.name,
-        recipientRaw: contact.raw,
-        recipientE164: contact.e164,
-        messageType: input.mediaAssetId ? "MEDIA" : "TEXT",
-        payload: encodeJson(renderCampaignTemplate(input.message, contact.variables)),
-        status: "PENDING",
-        priority: 100,
-        idempotencyKey: crypto.createHash("sha256").update(`${campaign.id}:${index}:${contact.e164}`).digest("hex"),
-      }));
+      const now = new Date();
+      const sessionMessageCounts = new Map<string, number>();
+
+      const queueRows = input.contacts.map((contact, index) => {
+        const assignedSessionId = input.sessionIds[index % input.sessionIds.length];
+
+        let availableAt = now;
+        if (input.maxDailyMessagesPerSession && input.maxDailyMessagesPerSession > 0) {
+          const currentCount = sessionMessageCounts.get(assignedSessionId) ?? 0;
+          const dayIndex = Math.floor(currentCount / input.maxDailyMessagesPerSession);
+          sessionMessageCounts.set(assignedSessionId, currentCount + 1);
+          if (dayIndex > 0) {
+            availableAt = new Date(now.getTime() + dayIndex * 24 * 60 * 60 * 1000);
+          }
+        }
+
+        return {
+          tenantId: input.tenantId,
+          campaignId: campaign.id,
+          assignedSessionId,
+          mediaAssetId: input.mediaAssetId,
+          contactName: contact.name,
+          recipientRaw: contact.raw,
+          recipientE164: contact.e164,
+          messageType: input.mediaAssetId ? "MEDIA" : "TEXT",
+          payload: encodeJson(renderCampaignTemplate(input.message, contact.variables)),
+          status: "PENDING",
+          priority: 100,
+          availableAt,
+          idempotencyKey: crypto.createHash("sha256").update(`${campaign.id}:${index}:${contact.e164}`).digest("hex"),
+        };
+      });
       if (queueRows.length > 0) await tx.messageQueue.createMany({ data: queueRows });
       await tx.outboxEvent.create({
         data: {

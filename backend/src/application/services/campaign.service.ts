@@ -1,4 +1,4 @@
-﻿import type { ICampaignRepository } from "../ports/repositories/campaign.repository.js";
+import type { ICampaignRepository } from "../ports/repositories/campaign.repository.js";
 import type { CampaignContactInput, CampaignMessagePayload } from "../../domain/campaign/campaign-message.js";
 import { PhoneNormalizerService } from "./phone-normalizer.service.js";
 import { HttpError } from "../../shared/errors/http-error.js";
@@ -148,6 +148,7 @@ export class CampaignService {
     message: CampaignMessagePayload;
     mediaAssetId?: string;
     defaultRegion: string;
+    maxDailyMessagesPerSession?: number;
   }) {
     if (!input.name.trim()) throw new HttpError(400, "El nombre es obligatorio.");
     if (input.sessionIds.length === 0) throw new HttpError(400, "Selecciona al menos una sesión.");
@@ -177,6 +178,7 @@ export class CampaignService {
         contacts: prepared.contacts,
         message: input.message,
         mediaAssetId: input.mediaAssetId,
+        maxDailyMessagesPerSession: input.maxDailyMessagesPerSession,
       });
     } catch (error) {
       await this.capacity.releaseCampaignReservation({

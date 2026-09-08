@@ -104,6 +104,7 @@ export function classifySendFailure(error: unknown): SendFailureClassification {
     statusCode === 401
     || statusCode === 403
     || statusCode === 429
+    || statusCode === 463
     || containsAny(text, [
       "logged out",
       "logged_out",
@@ -119,13 +120,24 @@ export function classifySendFailure(error: unknown): SendFailureClassification {
       "cuenta bloqueada",
       "cuenta suspendida",
       "multidevice mismatch",
+      "463",
+      "reach-out",
+      "privacy token",
+      "tctoken",
     ])
   ) {
+    const isReachOutLock = statusCode === 463 || containsAny(text, ["463", "reach-out", "privacy token", "tctoken"]);
     return {
       kind: "SESSION_FATAL",
-      code: statusCode === 429 ? "SESSION_RATE_LIMITED" : "SESSION_UNAVAILABLE",
-      message,
-      statusCode,
+      code: isReachOutLock
+        ? "SESSION_REACH_OUT_TIMELOCK"
+        : statusCode === 429
+          ? "SESSION_RATE_LIMITED"
+          : "SESSION_UNAVAILABLE",
+      message: isReachOutLock
+        ? "Restricción temporal de WhatsApp para mensajes a desconocidos (Error 463 / Reach-out Time-lock). Sesión en pausa de protección para evitar bloqueo definitivo."
+        : message,
+      statusCode: statusCode ?? (isReachOutLock ? 463 : undefined),
     };
   }
 

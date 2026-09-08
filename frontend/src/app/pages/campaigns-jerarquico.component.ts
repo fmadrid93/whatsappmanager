@@ -286,6 +286,34 @@ import {
               }
             </select>
 
+            <label for="cj-daily-limit">
+              Límite máx. de mensajes por número por día
+              <span class="muted small">(Opcional · Recomendado para números nuevos o en frío)</span>
+            </label>
+            <div class="daily-limit-input-group">
+              <input
+                pInputText
+                type="number"
+                min="1"
+                max="5000"
+                id="cj-daily-limit"
+                name="cjDailyLimit"
+                [(ngModel)]="maxDailyMessagesPerSession"
+                placeholder="Ej: 20 (dejar vacío para enviar todo de inmediato)"
+              />
+              @if (maxDailyMessagesPerSession && maxDailyMessagesPerSession > 0 && contactosResult()?.contacts?.length && selectedSessionIds().length > 0) {
+                <div class="daily-distribution-preview">
+                  <i class="pi pi-shield"></i>
+                  <div>
+                    <strong>Pacing anti-bloqueo activo:</strong>
+                    Con {{ selectedSessionIds().length }} sesión(es) a un máx de {{ maxDailyMessagesPerSession }} msgs/día c/u:
+                    se enviarán hasta <strong>{{ selectedSessionIds().length * maxDailyMessagesPerSession }}</strong> mensajes por día.
+                    La campaña se distribuirá automáticamente en <strong>{{ calcularDiasDistribucion() }}</strong> día(s) consecutivos sin sobrecargar tus chips.
+                  </div>
+                </div>
+              }
+            </div>
+
             <div class="validation-action-row">
               <p-button type="button" label="Validar destinatarios" icon="pi pi-check-circle" severity="secondary" [loading]="validating()" [disabled]="!contactosResult()?.contacts?.length" (onClick)="validar()" />
               @if (validationResult(); as val) {
@@ -877,6 +905,10 @@ import {
     .created-info i{color:#16a34a;font-size:1.2rem}
     .created-actions{display:flex;gap:.5rem;flex-wrap:wrap}
 
+    .daily-limit-input-group{display:flex;flex-direction:column;gap:.4rem}
+    .daily-distribution-preview{display:flex;align-items:flex-start;gap:.6rem;background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46;padding:.7rem .9rem;border-radius:8px;font-size:.82rem;line-height:1.45}
+    .daily-distribution-preview i{font-size:1.1rem;color:#059669;margin-top:2px}
+
     /* SESSIONS */
     .session-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.4rem}
     .session-toggle{display:flex;gap:.35rem;flex-wrap:wrap}
@@ -1204,6 +1236,16 @@ export class CampaignsJerarquicoComponent implements OnInit {
     { code: "ES", label: "España (+34)" },
   ] as const;
   defaultRegion = "PY";
+  maxDailyMessagesPerSession: number | null = null;
+
+  calcularDiasDistribucion(): number {
+    const total = this.contactosResult()?.contacts?.length ?? 0;
+    const sesiones = this.selectedSessionIds().length;
+    const limit = this.maxDailyMessagesPerSession;
+    if (!limit || limit <= 0 || sesiones === 0 || total === 0) return 1;
+    const capacidadDiaria = sesiones * limit;
+    return Math.ceil(total / capacidadDiaria);
+  }
 
   readonly campanias = signal<CampaignRecord[]>([]);
   readonly loadingCampanias = signal(false);
@@ -1474,7 +1516,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
     }
 
     this.saving.set(true);
-    this.api.createCampaign({
+    const payload: Record<string, unknown> = {
       name: this.name.trim(),
       jerarquiaResumen: this.resumenJerarquiaSeleccion() || undefined,
       sessionIds: this.selectedSessionIds(),
@@ -1482,7 +1524,12 @@ export class CampaignsJerarquicoComponent implements OnInit {
       message: { text: this.messageText },
       mediaAssetId: this.selectedMediaAssetId() || undefined,
       defaultRegion: this.defaultRegion.toUpperCase(),
-    }).subscribe({
+    };
+    if (this.maxDailyMessagesPerSession && this.maxDailyMessagesPerSession > 0) {
+      payload.maxDailyMessagesPerSession = Number(this.maxDailyMessagesPerSession);
+    }
+
+    this.api.createCampaign(payload).subscribe({
       next: (created) => {
         this.saving.set(false);
         this.ultimaCampaniaCreada.set({ id: created.id, name: created.name, totalMessages: created.totalMessages });

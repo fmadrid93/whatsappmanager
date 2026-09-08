@@ -30,6 +30,7 @@ const campaignCreateSchema = z.object({
   message: z.object({ text: z.string().max(4096), caption: z.string().max(1024).optional() }),
   mediaAssetId: z.string().uuid().optional(),
   defaultRegion: z.string().length(2).optional(),
+  maxDailyMessagesPerSession: z.coerce.number().int().positive().optional(),
 });
 
 export const jerarquiaSeleccionSchema = z.object({
@@ -1023,6 +1024,7 @@ export function createRoutes(container: AppContainer): Router {
           message: parsed.message,
           mediaAssetId: parsed.mediaAssetId,
           defaultRegion: parsed.defaultRegion ?? container.env.DEFAULT_COUNTRY_REGION,
+          maxDailyMessagesPerSession: parsed.maxDailyMessagesPerSession,
         });
         await container.services.auditService.record({
           tenantId: principal.tenantId,

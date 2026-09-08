@@ -1,27 +1,30 @@
 # Bitácora de Actualizaciones y Correcciones
 
-## Estado Actual: PARCHE ANTI-463 APLICADO (LID Routing + Typing Simulation)
+## Estado Actual: v1.2.3 - PROTECCIÓN ANTI-BLOQUEO & LÍMITE DIARIO EN JERARQUÍA
 
 ### Fecha: 08/09/2026
-### Versión UI: `v1.2.2` (en menú lateral de la app)
+### Versión UI: `v1.2.3` (en menú lateral de la app)
 ### Rama: `main`
-### Incidencia: Rechazo 463 en mensajes salientes en frío hacia contactos con LID
+### Mejoras Clave:
+1. **Límite Diario de Mensajes por Número en Jerarquía (`maxDailyMessagesPerSession`):**
+   * Configuración en la pantalla `/envios-jerarquia` de un cupo máximo de mensajes por día por sesión.
+   * Si se define un límite (ej. 20 msgs/día), el backend distribuye automáticamente los mensajes usando el campo nativo `availableAt` en bloques de 24 horas (`hoy`, `mañana`, `pasado mañana`). No requiere migraciones SQL.
+   * Previsualización dinámica en la interfaz calculando cuántos días tomará la campaña y cuántos mensajes se despacharán por día.
 
----
+2. **Filtro Estricto de Verificación WhatsApp (`onWhatsApp`):**
+   * En `message-queue-worker.ts`, si la consulta a WhatsApp confirma que el número **no está registrado**, el mensaje se descarta inmediatamente a Dead Letter Queue (`RECIPIENT_NOT_AVAILABLE`).
+   * **Beneficio:** Evita que el chip intente enviar mensajes a números inexistentes, lo cual es la causa principal de detección como bot rastreador / spammer.
 
-## Novedad: Corrección de Enrutamiento @lid y Simulación de Escritura
+3. **Manejo de Error 463 y Freno al Efecto Dominó (Failover):**
+   * El Error 463 de WhatsApp (*Reach-out Time-lock* / falta de token de confianza en frío) ahora se clasifica como `SESSION_REACH_OUT_TIMELOCK`.
+   * Pone la sesión afectada en pausa preventiva y **no transfiere automáticamente los mensajes restantes a otras sesiones**, evitando que se contagien y se bloqueen múltiples números en cadena.
 
-1. **Enrutamiento `@lid` Preservado:**
-   * Se eliminó el descarte forzado de `@lid` en `backend/src/worker/message-queue-worker.ts`.
-   * Si WhatsApp reporta que el contacto posee un identificador de privacidad `@lid`, el sistema enruta directamente a ese `@lid` en lugar de forzar `@s.whatsapp.net`, evitando la infracción de privacidad que disparaba el código 463.
+4. **Soporte de Spintax en Plantillas:**
+   * En `campaign-message.ts`, se incorporó `parseSpintax`: soporte de sintaxis `{opción1|opción2|opción3}`.
+   * Cada destinatario recibe una variación textual diferente, evitando que WhatsApp detecte hashes idénticos en envíos masivos.
 
-2. **Simulación de Escritura Humana (Humanized Typing):**
-   * Tras emitir `"composing"`, el sistema pausa de **1.5 a 3.5 segundos** antes de enviar el mensaje, imitando el tiempo de tipeo humano real en lugar de disparar en 0 milisegundos.
-   * Al finalizar el envío, se emite `"paused"` para restablecer el estado del chat limpiamente.
-
-3. **Huellas de Navegador Depuradas:**
-   * Se eliminaron huellas obsoletas (`Safari`, `macOS Desktop`, `Firefox`) en `proxy-fingerprint.util.ts`.
-   * Se conservan únicamente firmas estándar de alta reputación: **Windows Chrome, Windows Edge, macOS Chrome y Ubuntu Chrome**.
+5. **Jittering de Retrasos Humanizado:**
+   * En `message-queue-worker.ts`, se elevó el piso de intervalo aleatorio a 4-8 segundos más 1.5-3.5 segundos de simulación de tipeo ("composing"), evitando ráfagas mecanizadas.
 
 ---
 

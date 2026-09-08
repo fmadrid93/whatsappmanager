@@ -249,9 +249,19 @@ export class MessageQueueWorker {
         const phoneJid = `${digits}@s.whatsapp.net`;
         try {
           const results = await socket.onWhatsApp(digits);
-          const target = results?.find((entry) => entry.exists);
-          destinationJid = target?.jid || phoneJid;
-        } catch {
+          if (Array.isArray(results) && results.length > 0) {
+            const target = results.find((entry) => entry.exists);
+            if (!target) {
+              throw new Error("El destinatario no está registrado en WhatsApp.");
+            }
+            destinationJid = target.jid || phoneJid;
+          } else {
+            destinationJid = phoneJid;
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("no está registrado en WhatsApp")) {
+            throw error;
+          }
           destinationJid = phoneJid;
         }
         await this.queue.setRecipientJid(item.id, destinationJid);
@@ -261,7 +271,9 @@ export class MessageQueueWorker {
       if (!resolvedDestinationJid) throw new Error("No se pudo resolver el JID de destino.");
 
       const payload = decodeJson<CampaignMessagePayload>(item.payload);
-      await sleep(randomBetween(this.delayMinMs, this.delayMaxMs));
+      const effectiveDelayMin = Math.max(this.delayMinMs, 4000);
+      const effectiveDelayMax = Math.max(this.delayMaxMs, 8000);
+      await sleep(randomBetween(effectiveDelayMin, effectiveDelayMax));
 
       if (this.haltedSessions.has(sessionId)) {
         await this.queue.releaseForReconciliation(item.id, new Date(Date.now() + 5000));

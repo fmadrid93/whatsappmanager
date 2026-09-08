@@ -29,6 +29,7 @@ export interface CreateCampaignInput {
   contacts: Array<{ name?: string; raw: string; e164: string; variables: Record<string, string> }>;
   message: CampaignMessagePayload;
   mediaAssetId?: string;
+  maxDailyMessagesPerSession?: number;
 }
 
 export interface AddCampaignSessionsResult {

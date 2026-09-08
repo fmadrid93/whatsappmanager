@@ -15,7 +15,7 @@ import { AuthService } from "./core/auth.service";
         <aside class="sidebar">
           <a routerLink="/" class="brand">
             <i class="pi pi-comments"></i>
-            <span class="brand-text">WhatsApp SaaS <small>v1.2.2</small></span>
+            <span class="brand-text">WhatsApp SaaS <small>v1.2.3</small></span>
           </a>
 
           <nav>
