@@ -1,9 +1,10 @@
 # Bitácora de Actualizaciones y Correcciones
 
-## Estado Actual: v1.2.3 - PROTECCIÓN ANTI-BLOQUEO & LÍMITE DIARIO EN JERARQUÍA
+## Estado Actual: v1.2.4 - PROTECCIÓN ANTI-BLOQUEO & LÍMITE DIARIO EN JERARQUÍA
 
 ### Fecha: 08/09/2026
-### Versión UI: `v1.2.3` (en menú lateral de la app)
+### Versión UI: `v1.2.4` (en menú lateral de la app)
+### Versión Core: `1.3.2`
 ### Rama: `main`
 ### Mejoras Clave:
 1. **Límite Diario de Mensajes por Número en Jerarquía (`maxDailyMessagesPerSession`):**
