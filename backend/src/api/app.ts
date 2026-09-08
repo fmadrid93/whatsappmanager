@@ -33,16 +33,7 @@ export function createApp(
 
   app.use(cors({
     origin(origin, callback) {
-      if (
-        !origin ||
-        origin.startsWith("http://localhost") ||
-        origin.startsWith("http://127.0.0.1") ||
-        container.env.CORS_ORIGINS.includes(origin) ||
-        container.env.CORS_ORIGINS.includes("*")
-      ) {
-        return callback(null, true);
-      }
-      callback(new Error("Origen no permitido por CORS."));
+      return callback(null, true);
     },
     credentials: true,
   }));
