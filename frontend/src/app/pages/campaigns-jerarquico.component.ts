@@ -268,7 +268,7 @@ import {
             </div>
 
             <label for="cj-message">Mensaje</label>
-            <textarea id="cj-message" name="cjMessage" rows="5" [(ngModel)]="messageText" (ngModelChange)="onMessageTextChange()" [placeholder]="'Hola {{nombre}}, queremos invitarte a participar...'"></textarea>
+            <textarea id="cj-message" name="cjMessage" rows="5" [(ngModel)]="messageText" (ngModelChange)="onMessageTextChange()" [placeholder]="'{Hola|Buenas|Qué tal} {{nombre}}, queremos invitarte a...'"></textarea>
             <div class="contact-help spintax-help">
               <div><strong>Variables disponibles:</strong> <code>{{ '{{nombre}}' }}</code>, <code>{{ '{{nombre_votante}}' }}</code>.</div>
               <div class="spintax-tip">
@@ -1296,17 +1296,18 @@ export class CampaignsJerarquicoComponent implements OnInit {
   generarEjemploSpintax(): void {
     const raw = this.messageText || "";
     const withVars = raw.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_m, key) => key === "nombre" ? "Juan" : (key === "nombre_votante" ? "Juan Pérez" : key));
-    const spintaxRegex = /\{([^{}]+)\}/g;
     let result = withVars;
     let iter = 0;
-    while (spintaxRegex.test(result) && iter < 15) {
+    while (result.includes("{") && result.includes("|") && iter < 15) {
       iter++;
-      result = result.replace(spintaxRegex, (match, choicesStr: string) => {
+      const prev = result;
+      result = result.replace(/\{([^{}]+)\}/g, (match, choicesStr: string) => {
         if (!choicesStr.includes("|")) return match;
-        const choices = choicesStr.split("|");
+        const choices = choicesStr.split("|").map(c => c.trim());
         const randomIndex = Math.floor(Math.random() * choices.length);
         return choices[randomIndex] ?? "";
       });
+      if (result === prev) break;
     }
     this.ejemploSpintax.set(result);
   }

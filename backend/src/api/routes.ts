@@ -15,6 +15,7 @@ import { createRateLimiter } from "./middleware/rate-limit.middleware.js";
 import { HttpError } from "../shared/errors/http-error.js";
 import { supportedWebhookEvents } from "../application/services/integration-management.service.js";
 import { sleep } from "../shared/utils/delay.js";
+import { parseSpintax } from "../domain/campaign/campaign-message.js";
 
 export const campaignContactSchema = z.object({
   name: z.string().max(150).optional(),
@@ -892,7 +893,7 @@ export function createRoutes(container: AppContainer): Router {
             recipientE164: to.startsWith("+") ? to : `+${to}`,
             recipientJid: to.includes("@") ? to : `${to}@s.whatsapp.net`,
             messageType: "conversation",
-            payload: Buffer.from(JSON.stringify({ text: message })),
+            payload: Buffer.from(JSON.stringify({ text: parseSpintax(message) })),
             status: "PENDING",
             priority: 1,
             attemptCount: 0,

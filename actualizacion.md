@@ -20,9 +20,11 @@
    * El Error 463 de WhatsApp (*Reach-out Time-lock* / falta de token de confianza en frío) ahora se clasifica como `SESSION_REACH_OUT_TIMELOCK`.
    * Pone la sesión afectada en pausa preventiva y **no transfiere automáticamente los mensajes restantes a otras sesiones**, evitando que se contagien y se bloqueen múltiples números en cadena.
 
-4. **Soporte de Spintax en Plantillas:**
-   * En `campaign-message.ts`, se incorporó `parseSpintax`: soporte de sintaxis `{opción1|opción2|opción3}`.
-   * Cada destinatario recibe una variación textual diferente, evitando que WhatsApp detecte hashes idénticos en envíos masivos.
+4. **Soporte de Spintax Anti-Bloqueo Completo:**
+   * Soporte integral de sintaxis `{opción1|opción2|opción3}` en campañas estándar, campañas de jerarquía, mensajes directos y respuestas automáticas del bot.
+   * Limpieza automática de espacios (`c.trim()`) para soportar sintaxis relajada `{ Hola | Buenas | Qué tal }`.
+   * Selector aleatorio independiente por cada destinatario: un contacto recibe "Hola Juan", otro "Buenas Maria", otro "Qué tal Pedro", etc.
+   * Tarjeta interactiva en la interfaz con botón `[ Probar otra variante ]` para ver en tiempo real cómo se combinarán los mensajes antes de enviar.
 
 5. **Jittering de Retrasos Humanizado:**
    * En `message-queue-worker.ts`, se elevó el piso de intervalo aleatorio a 4-8 segundos más 1.5-3.5 segundos de simulación de tipeo ("composing"), evitando ráfagas mecanizadas.

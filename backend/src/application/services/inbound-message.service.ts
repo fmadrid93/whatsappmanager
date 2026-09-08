@@ -9,6 +9,7 @@ import type { Voto1x10Client } from "../../infrastructure/voto1x10/voto1x10-clie
 import type { Voto1x10DbRepository } from "../../infrastructure/voto1x10/voto1x10-db.repository.js";
 import { randomBetween, sleep } from "../../shared/utils/delay.js";
 import { logger } from "../../shared/logger/logger.js";
+import { parseSpintax } from "../../domain/campaign/campaign-message.js";
 
 function messageDate(message: WAMessage): Date {
   const value = message.messageTimestamp;
@@ -37,7 +38,8 @@ function inboundText(message: WAMessage): string {
 }
 
 function interpolate(text: string, variables: Record<string, string>): string {
-  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => variables[key] ?? "");
+  const withVariables = text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => variables[key] ?? "");
+  return parseSpintax(withVariables);
 }
 
 /**

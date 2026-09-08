@@ -158,7 +158,7 @@ import {
             </div>
 
             <label for="message">Mensaje / plantilla</label>
-            <textarea id="message" name="message" rows="5" [(ngModel)]="messageText" (ngModelChange)="onMessageTextChange()" [placeholder]="'Hola {{nombre}}, tu saldo es {{saldo}}.'"></textarea>
+            <textarea id="message" name="message" rows="5" [(ngModel)]="messageText" (ngModelChange)="onMessageTextChange()" [placeholder]="'{Hola|Buenas|Qué tal} {{nombre}}, tu saldo es {{saldo}}.'"></textarea>
             <div class="contact-help spintax-help">
               <div><strong>Variables disponibles:</strong> <code>{{ '{{nombre}}' }}</code>, <code>{{ '{{telefono}}' }}</code> y cualquier columna extra del archivo.</div>
               <div class="spintax-tip">
@@ -571,17 +571,18 @@ export class CampaignsComponent implements OnInit, OnDestroy {
   generarEjemploSpintax(): void {
     const raw = this.messageText || "";
     const withVars = raw.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_m, key) => key === "nombre" ? "Juan" : (key === "saldo" ? "150.000" : (key === "telefono" ? "+595981123456" : key)));
-    const spintaxRegex = /\{([^{}]+)\}/g;
     let result = withVars;
     let iter = 0;
-    while (spintaxRegex.test(result) && iter < 15) {
+    while (result.includes("{") && result.includes("|") && iter < 15) {
       iter++;
-      result = result.replace(spintaxRegex, (match, choicesStr: string) => {
+      const prev = result;
+      result = result.replace(/\{([^{}]+)\}/g, (match, choicesStr: string) => {
         if (!choicesStr.includes("|")) return match;
-        const choices = choicesStr.split("|");
+        const choices = choicesStr.split("|").map(c => c.trim());
         const randomIndex = Math.floor(Math.random() * choices.length);
         return choices[randomIndex] ?? "";
       });
+      if (result === prev) break;
     }
     this.ejemploSpintax.set(result);
   }

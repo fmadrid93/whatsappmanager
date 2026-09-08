@@ -11,17 +11,18 @@ export interface CampaignContactInput {
 
 export function parseSpintax(text: string): string {
   if (!text || !text.includes("{") || !text.includes("|")) return text;
-  const spintaxRegex = /\{([^{}]+)\}/g;
   let result = text;
   let iterations = 0;
-  while (spintaxRegex.test(result) && iterations < 15) {
+  while (result.includes("{") && result.includes("|") && iterations < 15) {
     iterations++;
-    result = result.replace(spintaxRegex, (match, choicesStr: string) => {
+    const prev = result;
+    result = result.replace(/\{([^{}]+)\}/g, (match, choicesStr: string) => {
       if (!choicesStr.includes("|")) return match;
-      const choices = choicesStr.split("|");
+      const choices = choicesStr.split("|").map((c) => c.trim());
       const randomIndex = Math.floor(Math.random() * choices.length);
       return choices[randomIndex] ?? "";
     });
+    if (result === prev) break;
   }
   return result;
 }
