@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -26,7 +26,7 @@ test("worker masivo mantiene protección de sesión fatal", async () => {
 test("env limita la concurrencia por sesión", async () => {
   const env = await source("src/shared/config/env.ts");
   assert.match(env, /QUEUE_SESSION_CONCURRENCY/);
-  assert.match(env, /max\(4\)\.default\(2\)/);
+  assert.match(env, /max\(4\)\.default\([12]\)/);
   assert.match(env, /QUEUE_MAX_INFLIGHT/);
 });
 

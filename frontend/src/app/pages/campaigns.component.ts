@@ -1,4 +1,4 @@
-﻿import { Component, OnDestroy, OnInit, computed, inject, signal } from "@angular/core";
+import { Component, OnDestroy, OnInit, computed, inject, signal } from "@angular/core";
 import { DatePipe } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ButtonModule } from "primeng/button";
@@ -502,8 +502,8 @@ export class CampaignsComponent implements OnInit, OnDestroy {
   name = "";
   contactsText = "";
   readonly regionOptions = [
-    { code: "BO", label: "Bolivia (+591)" },
     { code: "PY", label: "Paraguay (+595)" },
+    { code: "BO", label: "Bolivia (+591)" },
     { code: "AR", label: "Argentina (+54)" },
     { code: "BR", label: "Brasil (+55)" },
     { code: "CL", label: "Chile (+56)" },
@@ -517,7 +517,7 @@ export class CampaignsComponent implements OnInit, OnDestroy {
     { code: "ES", label: "España (+34)" },
   ] as const;
 
-  defaultRegion = "BO";
+  defaultRegion = "PY";
   messageText = "";
   consentConfirmed = false;
   selectedSourceConnectorId = "";

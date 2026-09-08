@@ -103,9 +103,28 @@ export class BaileysSessionGateway implements ISessionGateway {
     }
   }
 
+  private cleanupSocket(socket?: WASocket, reason = "Socket closed"): void {
+    if (!socket) return;
+    try {
+      socket.ev.removeAllListeners("connection.update");
+      socket.ev.removeAllListeners("creds.update");
+      socket.ev.removeAllListeners("messages.upsert");
+      socket.ws?.removeAllListeners();
+      socket.ws?.close();
+      (socket as unknown as { end: (error?: Error) => void }).end?.(new Error(reason));
+    } catch {
+      // El socket puede haberse cerrado antes.
+    }
+  }
+
   async start(sessionId: string): Promise<void> {
     this.stoppingSessions.delete(sessionId);
-    if (this.registry.has(sessionId) || this.startingSessions.has(sessionId)) return;
+    if (this.registry.has(sessionId)) {
+      const existing = this.registry.get(sessionId);
+      this.registry.delete(sessionId);
+      this.cleanupSocket(existing, "Replacing socket");
+    }
+    if (this.startingSessions.has(sessionId)) return;
     this.startingSessions.add(sessionId);
 
     try {
@@ -262,19 +281,24 @@ export class BaileysSessionGateway implements ISessionGateway {
     throw lastError || new Error("No se pudo generar el código de emparejamiento");
   }
 
-  private scheduleRestartRequired(sessionId: string): void {
+  private scheduleRestartRequired(sessionId: string, delayMs = 1500): void {
     if (this.restartingSessions.has(sessionId) || this.stoppingSessions.has(sessionId)) return;
     this.restartingSessions.add(sessionId);
     setTimeout(() => {
       void (async () => {
         try {
-          if (this.stoppingSessions.has(sessionId) || this.registry.has(sessionId)) return;
-          logger.info({ sessionId }, "Reiniciando socket despues de DisconnectReason.restartRequired (515).");
+          if (this.stoppingSessions.has(sessionId)) return;
+          if (this.registry.has(sessionId)) {
+            const oldSocket = this.registry.get(sessionId);
+            this.registry.delete(sessionId);
+            this.cleanupSocket(oldSocket, "Socket restarting");
+          }
+          logger.info({ sessionId }, "Reiniciando socket...");
           await this.start(sessionId);
         } catch (error) {
-          logger.error({ error, sessionId }, "Fallo el reinicio automatico posterior a 515.");
+          logger.error({ error, sessionId }, "Fallo el reinicio automatico de socket.");
           await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
-            disconnectReason: "restartRequiredReconnectFailed",
+            disconnectReason: "reconnectFailed",
             disconnectedAt: new Date(),
             lastConnectionError: errorText(error),
             lastConnectionAt: new Date(),
@@ -284,7 +308,7 @@ export class BaileysSessionGateway implements ISessionGateway {
           this.restartingSessions.delete(sessionId);
         }
       })();
-    }, 750);
+    }, delayMs);
   }
 
   private registerConnectionUpdates(sessionId: string, socket: WASocket): void {
@@ -362,20 +386,27 @@ export class BaileysSessionGateway implements ISessionGateway {
         if (update.connection === "close") {
           this.clearQrTimeoutTimer(sessionId);
           this.registry.delete(sessionId);
+          this.cleanupSocket(socket, "Socket closed");
+
           const error = update.lastDisconnect?.error;
           const statusCode = disconnectCode(error);
-          const loggedOut = statusCode === DisconnectReason.loggedOut;
-          const restartRequired = isRestartRequiredStatus(statusCode);
+          const connectionError = errorText(error);
+          const normalizedErr = connectionError.toLowerCase();
+          const isConflict =
+            statusCode === 440 ||
+            normalizedErr.includes("conflict") ||
+            normalizedErr.includes("stream errored") ||
+            normalizedErr.includes("connection replaced") ||
+            normalizedErr.includes("connection closed") ||
+            normalizedErr.includes("restart required") ||
+            normalizedErr.includes("connection failure");
+
+          const loggedOut = (statusCode === DisconnectReason.loggedOut || statusCode === 401) && !isConflict;
+          const restartRequired = isRestartRequiredStatus(statusCode) || isConflict;
           const pairingRejected = statusCode === 405;
           const intentionallyStopped = this.stoppingSessions.has(sessionId);
           const currentSession = await this.sessions.findById(sessionId);
           const preserveQuarantine = shouldPreserveQuarantine(currentSession?.status, intentionallyStopped);
-          const connectionError = errorText(error);
-          const connectionFailure = classifySendFailure({
-            statusCode,
-            message: connectionError,
-          });
-          const fatalDisconnect = connectionFailure.kind === "SESSION_FATAL" && !loggedOut;
 
           if (preserveQuarantine) {
             logger.warn(
@@ -425,10 +456,8 @@ export class BaileysSessionGateway implements ISessionGateway {
             });
             await this.sessions.releaseLease(sessionId, this.workerId);
           } else if (restartRequired) {
-            // ¡CRÍTICO! StatusCode 515 (restartRequired) ocurre cuando el usuario escanea el QR o durante la reconexión de Baileys.
-            // DEBE reiniciarse inmediatamente para completar el handshake y finalizar el emparejamiento.
-            logger.info({ sessionId, statusCode }, "Reinicio requerido por Baileys (515/restartRequired); reanudando socket para completar conexión...");
-            this.scheduleRestartRequired(sessionId);
+            logger.info({ sessionId, statusCode, connectionError }, "Reinicio/reconexión requerida por Baileys; reanudando socket...");
+            this.scheduleRestartRequired(sessionId, 2000);
           } else if (!intentionallyStopped) {
             const isUnauthenticated = !currentSession?.phoneE164 && !currentSession?.whatsappJid;
             if (isUnauthenticated) {
@@ -446,7 +475,7 @@ export class BaileysSessionGateway implements ISessionGateway {
             } else {
               // Desconexión transitoria de sesión vinculada: reintentar reconexión conservando la sesión activa
               logger.info({ sessionId, statusCode }, "Desconexión transitoria de sesión vinculada; reintentando reconexión automática.");
-              this.scheduleRestartRequired(sessionId);
+              this.scheduleRestartRequired(sessionId, 2000);
             }
           } else {
             await this.sessions.releaseLease(sessionId, this.workerId);

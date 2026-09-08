@@ -76,6 +76,29 @@ export function classifySendFailure(error: unknown): SendFailureClassification {
   }
 
   if (
+    containsAny(text, [
+      "conflict",
+      "stream errored",
+      "connection replaced",
+      "connection closed",
+      "restart required",
+      "connection failure",
+      "timeout",
+      "timed out",
+      "etimedout",
+      "econnreset",
+      "econnrefused",
+    ])
+  ) {
+    return {
+      kind: "TRANSIENT",
+      code: "SESSION_TEMPORARY_DISCONNECT",
+      message,
+      statusCode,
+    };
+  }
+
+  if (
     statusCode === 401
     || statusCode === 403
     || statusCode === 429

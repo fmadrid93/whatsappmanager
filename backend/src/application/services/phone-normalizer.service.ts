@@ -1,4 +1,4 @@
-﻿import googleLibPhoneNumber from "google-libphonenumber";
+import googleLibPhoneNumber from "google-libphonenumber";
 import { HttpError } from "../../shared/errors/http-error.js";
 
 const { PhoneNumberFormat, PhoneNumberUtil } = googleLibPhoneNumber;
@@ -20,10 +20,10 @@ export class PhoneNormalizerService {
   tryNormalize(rawValue: string, defaultRegion: string): PhoneNormalizationResult {
     const original = String(rawValue ?? "");
     const raw = original.trim();
-    const region = String(defaultRegion || "").trim().toUpperCase();
+    let region = String(defaultRegion || "PY").trim().toUpperCase();
+    if (!region || region.length !== 2) region = "PY";
 
     if (!raw) return { ok: false, error: "Teléfono vacío." };
-    if (!region || region.length !== 2) return { ok: false, error: `Región inválida: ${defaultRegion}` };
 
     const digits = raw.replace(/\D/g, "");
     if (!digits) return { ok: false, error: `Número telefónico inválido: ${original}` };
@@ -35,6 +35,23 @@ export class PhoneNormalizerService {
     };
 
     add(raw);
+    add(digits);
+
+    const regionsToTry = [region];
+
+    // Detección automática para números de Paraguay:
+    // Formato local estándar: 09XX-XXX-XXX (10 dígitos empezando con 09 o 0)
+    // Formato sin cero: 9XX-XXX-XXX (9 dígitos empezando con 9)
+    // Formato internacional: 595...
+    if (!regionsToTry.includes("PY")) {
+      if (
+        digits.startsWith("595") ||
+        (digits.startsWith("09") && digits.length === 10) ||
+        (digits.startsWith("9") && digits.length === 9)
+      ) {
+        regionsToTry.push("PY");
+      }
+    }
 
     let countryCode = 0;
     try {
@@ -66,22 +83,37 @@ export class PhoneNormalizerService {
       add(digits);
     }
 
-    for (const candidate of candidates) {
-      try {
-        const parsed = this.phoneUtil.parseAndKeepRawInput(candidate, region);
-        if (!this.phoneUtil.isValidNumber(parsed)) continue;
-        const e164 = this.phoneUtil.format(parsed, PhoneNumberFormat.E164);
-        return {
-          ok: true,
-          value: {
-            original,
-            e164,
-            digits: e164.replace(/\D/g, ""),
-            regionCode: this.phoneUtil.getRegionCodeForNumber(parsed) ?? undefined,
-          },
-        };
-      } catch {
-        // Probar el siguiente candidato.
+    // Candidatos adicionales quitando el 0 inicial local (ej. 0984611543 -> 984611543 / +595984611543)
+    if (digits.startsWith("0")) {
+      const withoutZero = digits.replace(/^0+/, "");
+      add(withoutZero);
+      add(`+595${withoutZero}`);
+    }
+    if (digits.startsWith("5950")) {
+      add(`+595${digits.slice(4)}`);
+    }
+    if (digits.startsWith("595")) {
+      add(`+${digits}`);
+    }
+
+    for (const reg of regionsToTry) {
+      for (const candidate of candidates) {
+        try {
+          const parsed = this.phoneUtil.parseAndKeepRawInput(candidate, reg);
+          if (!this.phoneUtil.isValidNumber(parsed)) continue;
+          const e164 = this.phoneUtil.format(parsed, PhoneNumberFormat.E164);
+          return {
+            ok: true,
+            value: {
+              original,
+              e164,
+              digits: e164.replace(/\D/g, ""),
+              regionCode: this.phoneUtil.getRegionCodeForNumber(parsed) ?? undefined,
+            },
+          };
+        } catch {
+          // Probar el siguiente candidato.
+        }
       }
     }
 

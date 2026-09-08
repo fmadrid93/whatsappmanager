@@ -243,8 +243,8 @@ export class IntegrationsComponent {
     name: "Cobranza julio",
     sessionIds: ["UUID_SESION"],
     message: { text: "Hola {{nombre}}, tu saldo es {{saldo}}." },
-    defaultRegion: "BO",
-    contacts: [{ phone: "59170000001", name: "Ana", variables: { saldo: "150 Bs" } }],
+    defaultRegion: "PY",
+    contacts: [{ phone: "0984611543", name: "Roque", variables: { saldo: "150.000 Gs" } }],
   }, null, 2);
 
   constructor() {

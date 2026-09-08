@@ -1203,7 +1203,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
     { code: "US", label: "Estados Unidos / Canadá (+1)" },
     { code: "ES", label: "España (+34)" },
   ] as const;
-  defaultRegion = "BO";
+  defaultRegion = "PY";
 
   readonly campanias = signal<CampaignRecord[]>([]);
   readonly loadingCampanias = signal(false);
@@ -1239,7 +1239,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
   editRecurrenteIntervalMinutes = 1440;
   editRecurrenteMessageText = "";
   editRecurrenteMediaAssetId = "";
-  editRecurrenteDefaultRegion = "BO";
+  editRecurrenteDefaultRegion = "PY";
   readonly editRecurrenteSessionIds = signal<string[]>([]);
   readonly editFiltroEstadosSesion = signal<string[]>([]);
   readonly editFiltroMunicipiosSesion = signal<string[]>([]);
