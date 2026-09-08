@@ -72,10 +72,10 @@ export class PrismaCampaignRepository implements ICampaignRepository {
       const sessionMessageCounts = new Map<string, number>();
 
       const queueRows = input.contacts.map((contact, index) => {
-        const assignedSessionId = input.sessionIds[index % input.sessionIds.length];
+        const assignedSessionId = input.sessionIds[index % input.sessionIds.length] ?? input.sessionIds[0] ?? "";
 
         let availableAt = now;
-        if (input.maxDailyMessagesPerSession && input.maxDailyMessagesPerSession > 0) {
+        if (input.maxDailyMessagesPerSession && input.maxDailyMessagesPerSession > 0 && assignedSessionId) {
           const currentCount = sessionMessageCounts.get(assignedSessionId) ?? 0;
           const dayIndex = Math.floor(currentCount / input.maxDailyMessagesPerSession);
           sessionMessageCounts.set(assignedSessionId, currentCount + 1);

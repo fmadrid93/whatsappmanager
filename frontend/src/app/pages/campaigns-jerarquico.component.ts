@@ -1537,7 +1537,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
       defaultRegion: this.defaultRegion.toUpperCase(),
     };
     if (this.maxDailyMessagesPerSession && this.maxDailyMessagesPerSession > 0) {
-      payload.maxDailyMessagesPerSession = Number(this.maxDailyMessagesPerSession);
+      payload["maxDailyMessagesPerSession"] = Number(this.maxDailyMessagesPerSession);
     }
 
     this.api.createCampaign(payload).subscribe({
