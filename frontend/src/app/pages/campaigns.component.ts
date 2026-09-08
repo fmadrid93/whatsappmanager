@@ -158,8 +158,26 @@ import {
             </div>
 
             <label for="message">Mensaje / plantilla</label>
-            <textarea id="message" name="message" rows="5" [(ngModel)]="messageText" [placeholder]="'Hola {{nombre}}, tu saldo es {{saldo}}.'"></textarea>
-            <div class="contact-help">Variables disponibles: {{ '{{nombre}}' }}, {{ '{{telefono}}' }} y cualquier columna extra del archivo.</div>
+            <textarea id="message" name="message" rows="5" [(ngModel)]="messageText" (ngModelChange)="onMessageTextChange()" [placeholder]="'Hola {{nombre}}, tu saldo es {{saldo}}.'"></textarea>
+            <div class="contact-help spintax-help">
+              <div><strong>Variables disponibles:</strong> <code>{{ '{{nombre}}' }}</code>, <code>{{ '{{telefono}}' }}</code> y cualquier columna extra del archivo.</div>
+              <div class="spintax-tip">
+                <i class="pi pi-shield"></i>
+                <span><strong>Spintax anti-bloqueo:</strong> usa <code>&#123;Hola|Buenas|Qué tal&#125;</code> para alternar palabras aleatorias en cada contacto.</span>
+              </div>
+            </div>
+
+            @if (tieneSpintax()) {
+              <div class="spintax-preview-card">
+                <div class="spintax-preview-header">
+                  <span><i class="pi pi-sparkles"></i> Ejemplo de variación calculada:</span>
+                  <button type="button" class="btn-mini btn-spintax-refresh" (click)="generarEjemploSpintax()">
+                    <i class="pi pi-refresh"></i> Probar otra variante
+                  </button>
+                </div>
+                <div class="spintax-preview-text">"{{ ejemploSpintax() }}"</div>
+              </div>
+            }
 
             <label for="media">Multimedia opcional</label>
             <select id="media" name="mediaAssetId" [ngModel]="selectedMediaAssetId()" (ngModelChange)="selectedMediaAssetId.set($event)">
@@ -178,6 +196,21 @@ import {
             } @else {
               <div class="no-media"><i class="pi pi-image"></i><span>La campaña se enviará sin archivo multimedia.</span></div>
             }
+
+            <label for="c-daily-limit">
+              Límite máx. de mensajes por número por día
+              <span class="muted small">(Opcional · Recomendado para números nuevos o en frío)</span>
+            </label>
+            <input
+              pInputText
+              type="number"
+              min="1"
+              max="5000"
+              id="c-daily-limit"
+              name="cDailyLimit"
+              [(ngModel)]="maxDailyMessagesPerSession"
+              placeholder="Ej: 20 (dejar vacío para enviar todo de inmediato)"
+            />
 
             <label class="check-row consent">
               <input type="checkbox" name="consent" [(ngModel)]="consentConfirmed" />
@@ -439,6 +472,15 @@ import {
     .campaign-grid{grid-template-columns:minmax(520px,1.35fr) minmax(320px,.65fr)}.campaign-table{display:block;margin-top:1rem}.session-options{display:grid;gap:.4rem;border:1px solid #d8dee4;padding:.7rem;border-radius:.5rem;max-height:160px;overflow:auto}.check-row{font-weight:400!important;display:flex;gap:.5rem;align-items:center}.import-summary{display:flex;justify-content:space-between;gap:.5rem;padding:.5rem 0;border-bottom:1px solid #edf0f2}.row-actions{display:flex;flex-wrap:wrap;gap:.35rem}.dlq-title{margin-bottom:.75rem}.import-box{border:1px dashed #aeb8c2;border-radius:.6rem;padding:.8rem;display:grid;gap:.6rem}.api-source-box{display:grid;gap:.45rem;padding:.75rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:.6rem}.api-source-box strong{display:flex;gap:.4rem;align-items:center;color:#1d4ed8}.api-source-box select,.api-source-box textarea{width:100%;border:1px solid #cbd5e1;border-radius:.45rem;padding:.55rem;background:#fff}.api-source-box small{color:#64748b}.file-button{cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;padding:.55rem .8rem;background:#eef2f6;border-radius:.45rem}.file-button input{display:none}.preview-table{display:grid;gap:.3rem;max-height:220px;overflow:auto}.preview-table>div{display:grid;grid-template-columns:1fr 1fr 2fr;gap:.5rem;font-size:.88rem;padding:.3rem;background:#f8fafb}.error-list{color:#b42318;max-height:130px;overflow:auto}.consent{margin-top:.5rem}.selected-media{display:grid;grid-template-columns:auto 1fr auto;gap:.65rem;align-items:center;padding:.75rem;border:1px solid #80b3ff;background:#f2f7ff;border-radius:10px}.selected-media>div:nth-child(2){display:grid}.selected-media small{color:#667085}.selected-media-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:#dbeafe;color:#1d4ed8}.selected-media button{border:0;background:transparent;cursor:pointer;color:#667085}.no-media{display:flex;gap:.5rem;align-items:center;color:#667085;background:#f8fafc;border:1px dashed #d8e0e9;border-radius:9px;padding:.65rem}.upload-box{display:grid;gap:.7rem}.upload-drop{min-height:190px;border:2px dashed #aebccc;border-radius:14px;display:grid!important;place-items:center;align-content:center;text-align:center;gap:.45rem;padding:1rem;cursor:pointer;background:#f8fafc;font-weight:400!important}.upload-drop:hover{border-color:#3b82f6;background:#f3f7ff}.upload-drop i{font-size:2rem;color:#2563eb}.upload-drop span{font-size:.82rem;color:#667085}.upload-drop input{display:none}.media-library{display:grid;gap:.45rem;margin-top:1rem;max-height:500px;overflow:auto}.media-row{width:100%;display:grid;grid-template-columns:auto 1fr auto;gap:.6rem;align-items:center;text-align:left;border:1px solid #e2e8f0;background:#fff;border-radius:10px;padding:.65rem;cursor:pointer}.media-row.selected{border-color:#3b82f6;background:#eff6ff}.media-row>span:nth-child(2){display:grid}.media-row small{color:#667085}.media-kind{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:#eef2f6;color:#344054}.empty-library{display:grid;place-items:center;text-align:center;gap:.35rem;color:#667085;padding:2rem}.empty-library i{font-size:2rem}.media-indicator{display:inline-flex;align-items:center;gap:.3rem;color:#667085}.media-indicator.with-media{color:#067647}.form-grid select{border:1px solid #cfd8e3;border-radius:8px;padding:.65rem;background:#fff}.detail-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1rem}.detail-summary{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:.7rem;margin-bottom:1rem}.detail-summary>div{display:grid;gap:.25rem;border:1px solid #e2e8f0;border-radius:10px;padding:.75rem;background:#f8fafc}.detail-summary span{font-size:.82rem;color:#667085}.detail-summary strong{font-size:1.25rem}.detail-filters{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.8rem}.detail-filters button{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:.45rem .8rem;cursor:pointer}.detail-filters button.active{background:#1d4ed8;color:#fff;border-color:#1d4ed8}.empty-detail{display:grid;place-items:center;gap:.35rem;padding:2rem;color:#667085}.empty-detail i{font-size:1.8rem}.error-message{max-width:360px;white-space:normal}.message-id{max-width:260px;word-break:break-all;font-size:.78rem}.recipient-validation{display:grid;gap:.7rem;border:1px solid #cbd5e1;border-radius:.7rem;padding:.8rem;background:#f8fafc}.recipient-validation-header{display:flex;justify-content:space-between;align-items:center;gap:.7rem}.recipient-validation-header>div{display:grid;gap:.2rem}.recipient-validation-header small{color:#64748b}.validation-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}.validation-summary>div{display:grid;gap:.2rem;background:#fff;border:1px solid #e2e8f0;border-radius:.55rem;padding:.55rem}.validation-summary span{font-size:.75rem;color:#64748b}.validation-summary strong{font-size:1.1rem}.validation-summary .ok strong{color:#15803d}.validation-summary .warn strong{color:#b45309}.validation-errors{color:#991b1b}.validation-errors>div{display:grid;grid-template-columns:1fr 1fr 2fr;gap:.5rem;padding:.35rem 0;border-bottom:1px solid #fee2e2}.normalization-preview{display:grid;gap:.3rem;margin-top:.4rem}.normalization-preview>div{display:grid;grid-template-columns:1fr auto 1fr;gap:.5rem;align-items:center;background:#fff;padding:.4rem;border-radius:.45rem}
     .performance-panel{display:grid;gap:.85rem;border:1px solid #bfdbfe;background:#eff6ff;border-radius:12px;padding:.9rem;margin-bottom:1rem}.performance-title{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.performance-title>div{display:grid;gap:.2rem}.performance-title span{font-size:.8rem;color:#64748b}.capacity-state{display:inline-flex;align-items:center;border-radius:999px;padding:.38rem .7rem;font-weight:800;font-size:.78rem;white-space:nowrap;background:#fff;border:1px solid #bfdbfe}.capacity-state[data-state="HOLGADO"]{color:#15803d;border-color:#86efac;background:#f0fdf4}.capacity-state[data-state="VIGILAR"]{color:#a16207;border-color:#fde047;background:#fefce8}.capacity-state[data-state="AGREGAR_WORKER"]{color:#1d4ed8;border-color:#93c5fd;background:#eff6ff}.capacity-state[data-state="SERVIDOR_SATURADO"]{color:#b91c1c;border-color:#fca5a5;background:#fef2f2}.campaign-progress-box{display:grid;gap:.65rem;background:#fff;border:1px solid #dbeafe;border-radius:12px;padding:.8rem}.progress-head{display:flex;justify-content:space-between;align-items:end;gap:1rem}.progress-head>div{display:grid;gap:.15rem}.progress-head span{font-size:.78rem;color:#64748b}.progress-percent{font-size:1.5rem}.progress-track{height:12px;border-radius:999px;background:#e2e8f0;overflow:hidden}.progress-track span{display:block;height:100%;min-width:0;border-radius:999px;background:#2563eb;transition:width .3s ease}.progress-breakdown{display:grid;grid-template-columns:repeat(6,minmax(110px,1fr));gap:.45rem}.progress-breakdown>div{display:grid;gap:.1rem;border:1px solid #e2e8f0;border-radius:8px;padding:.5rem;background:#f8fafc}.progress-breakdown span,.progress-breakdown small{font-size:.7rem;color:#64748b}.progress-breakdown strong{font-size:1rem}.progress-breakdown .ok strong{color:#15803d}.progress-breakdown .processing strong{color:#2563eb}.progress-breakdown .held strong{color:#a16207}.progress-breakdown .fail strong{color:#b91c1c}.progress-breakdown .remaining strong{color:#7c3aed}.performance-grid{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:.55rem}.performance-grid>div{display:grid;gap:.2rem;background:#fff;border:1px solid #dbeafe;border-radius:9px;padding:.65rem}.performance-grid span{font-size:.75rem;color:#64748b}.performance-grid strong{font-size:1.05rem;color:#17212b}.capacity-recommendation{display:flex;gap:.65rem;align-items:flex-start;background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:.7rem}.capacity-recommendation i{margin-top:.1rem;color:#2563eb}.capacity-recommendation>div{display:grid;gap:.15rem}.capacity-recommendation span{font-size:.78rem;color:#475569}.worker-capacity-table{display:grid;border:1px solid #dbeafe;background:#fff;border-radius:10px;overflow:hidden}.worker-capacity-head{display:flex;justify-content:space-between;gap:1rem;padding:.65rem;background:#f8fafc}.worker-capacity-head span{font-size:.75rem;color:#64748b}.worker-capacity-row{display:grid;grid-template-columns:minmax(140px,1.6fr) repeat(5,minmax(75px,.7fr));gap:.5rem;align-items:center;padding:.55rem .65rem;border-top:1px solid #eef2f7;font-size:.78rem}.worker-capacity-columns{font-weight:700;color:#64748b;background:#fbfdff}.performance-note{font-size:.78rem;color:#475569}.detail-limit-note{margin:-.3rem 0 .8rem}
     .recovery-panel{display:grid;gap:.8rem;border:1px solid #cbd5e1;background:#fff;border-radius:12px;padding:.9rem;margin-bottom:1rem}.recovery-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}.recovery-header>div{display:grid;gap:.2rem}.recovery-header span{font-size:.8rem;color:#64748b}.recovery-stats{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:.5rem}.recovery-stats>div{display:grid;gap:.2rem;border:1px solid #e2e8f0;border-radius:9px;padding:.65rem;background:#f8fafc}.recovery-stats span{font-size:.75rem;color:#64748b}.recovery-stats strong{font-size:1.1rem}.recovery-stats .recoverable strong{color:#1d4ed8}.recovery-stats .held strong{color:#b45309}.recovery-warning{display:flex;gap:.6rem;align-items:flex-start;border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;padding:.7rem;color:#9a3412}.recovery-warning>div{display:grid;gap:.15rem}.recovery-warning span{font-size:.78rem;color:#9a3412}.recovery-columns{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}.recovery-columns>div{display:grid;gap:.45rem}.recovery-session-list{display:grid;gap:.35rem;max-height:210px;overflow:auto}.recovery-session-row{display:grid;grid-template-columns:1fr auto;gap:.55rem;align-items:center;border:1px solid #e2e8f0;border-radius:8px;padding:.55rem;background:#f8fafc}.recovery-session-row.selectable{grid-template-columns:auto 1fr auto;cursor:pointer;background:#fff}.recovery-session-row>span:first-of-type{display:grid;gap:.05rem}.recovery-session-row small{color:#64748b;font-size:.72rem}.recovery-actions{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}.recovery-actions span{font-size:.76rem;color:#64748b}
+    .spintax-help{display:flex;flex-direction:column;gap:.3rem;margin-top:.2rem}
+    .spintax-tip{display:flex;align-items:center;gap:.4rem;color:#0369a1;background:#f0f9ff;padding:.35rem .6rem;border-radius:6px;font-size:.78rem;border:1px solid #bae6fd}
+    .spintax-tip i{color:#0284c7}
+    .spintax-preview-card{background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #3b82f6;border-radius:8px;padding:.6rem .8rem;margin-top:.4rem;display:flex;flex-direction:column;gap:.3rem}
+    .spintax-preview-header{display:flex;justify-content:space-between;align-items:center;font-size:.78rem;font-weight:700;color:#1e293b}
+    .spintax-preview-header i{color:#3b82f6}
+    .spintax-preview-text{font-size:.84rem;color:#334155;font-style:italic;background:#fff;padding:.4rem .6rem;border-radius:6px;border:1px solid #cbd5e1}
+    .btn-spintax-refresh{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:.2rem .5rem;border-radius:5px;cursor:pointer;font-size:.75rem}
+    .btn-spintax-refresh:hover{background:#dbeafe}
     @media(max-width:1000px){.campaign-grid{grid-template-columns:1fr}.detail-summary{grid-template-columns:repeat(2,1fr)}.performance-grid{grid-template-columns:repeat(2,1fr)}.progress-breakdown{grid-template-columns:repeat(3,1fr)}.worker-capacity-row{grid-template-columns:minmax(120px,1.4fr) repeat(5,minmax(60px,.7fr))}.validation-summary{grid-template-columns:repeat(2,1fr)}.recovery-stats{grid-template-columns:repeat(2,1fr)}.recovery-columns{grid-template-columns:1fr}}
   `],
 })
@@ -518,6 +560,37 @@ export class CampaignsComponent implements OnInit, OnDestroy {
   ] as const;
 
   defaultRegion = "PY";
+  maxDailyMessagesPerSession: number | null = null;
+  readonly ejemploSpintax = signal("");
+
+  tieneSpintax(): boolean {
+    const txt = this.messageText;
+    return Boolean(txt && txt.includes("{") && txt.includes("|") && txt.includes("}"));
+  }
+
+  generarEjemploSpintax(): void {
+    const raw = this.messageText || "";
+    const withVars = raw.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_m, key) => key === "nombre" ? "Juan" : (key === "saldo" ? "150.000" : (key === "telefono" ? "+595981123456" : key)));
+    const spintaxRegex = /\{([^{}]+)\}/g;
+    let result = withVars;
+    let iter = 0;
+    while (spintaxRegex.test(result) && iter < 15) {
+      iter++;
+      result = result.replace(spintaxRegex, (match, choicesStr: string) => {
+        if (!choicesStr.includes("|")) return match;
+        const choices = choicesStr.split("|");
+        const randomIndex = Math.floor(Math.random() * choices.length);
+        return choices[randomIndex] ?? "";
+      });
+    }
+    this.ejemploSpintax.set(result);
+  }
+
+  onMessageTextChange(): void {
+    if (this.tieneSpintax()) {
+      this.generarEjemploSpintax();
+    }
+  }
   messageText = "";
   consentConfirmed = false;
   selectedSourceConnectorId = "";
@@ -766,14 +839,18 @@ export class CampaignsComponent implements OnInit, OnDestroy {
     }
 
     this.saving.set(true);
-    this.api.createCampaign({
+    const payload: Record<string, unknown> = {
       name: this.name,
       sessionIds: this.selectedSessionIds(),
       contacts,
       message: { text: this.messageText },
       mediaAssetId: this.selectedMediaAssetId() || undefined,
       defaultRegion: this.defaultRegion.toUpperCase(),
-    }).subscribe({
+    };
+    if (this.maxDailyMessagesPerSession && this.maxDailyMessagesPerSession > 0) {
+      payload["maxDailyMessagesPerSession"] = Number(this.maxDailyMessagesPerSession);
+    }
+    this.api.createCampaign(payload).subscribe({
       next: (created) => {
         this.name = "";
         this.contactsText = "";

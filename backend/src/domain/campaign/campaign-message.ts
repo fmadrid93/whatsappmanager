@@ -10,10 +10,14 @@ export interface CampaignContactInput {
 }
 
 export function parseSpintax(text: string): string {
+  if (!text || !text.includes("{") || !text.includes("|")) return text;
   const spintaxRegex = /\{([^{}]+)\}/g;
   let result = text;
-  while (spintaxRegex.test(result)) {
-    result = result.replace(spintaxRegex, (_match, choicesStr: string) => {
+  let iterations = 0;
+  while (spintaxRegex.test(result) && iterations < 15) {
+    iterations++;
+    result = result.replace(spintaxRegex, (match, choicesStr: string) => {
+      if (!choicesStr.includes("|")) return match;
       const choices = choicesStr.split("|");
       const randomIndex = Math.floor(Math.random() * choices.length);
       return choices[randomIndex] ?? "";

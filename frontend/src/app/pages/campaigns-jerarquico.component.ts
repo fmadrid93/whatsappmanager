@@ -268,8 +268,26 @@ import {
             </div>
 
             <label for="cj-message">Mensaje</label>
-            <textarea id="cj-message" name="cjMessage" rows="5" [(ngModel)]="messageText" [placeholder]="'Hola {{nombre}}, queremos invitarte a participar...'"></textarea>
-            <div class="contact-help">Variables disponibles: {{ '{{nombre}}' }}, {{ '{{nombre_votante}}' }}.</div>
+            <textarea id="cj-message" name="cjMessage" rows="5" [(ngModel)]="messageText" (ngModelChange)="onMessageTextChange()" [placeholder]="'Hola {{nombre}}, queremos invitarte a participar...'"></textarea>
+            <div class="contact-help spintax-help">
+              <div><strong>Variables disponibles:</strong> <code>{{ '{{nombre}}' }}</code>, <code>{{ '{{nombre_votante}}' }}</code>.</div>
+              <div class="spintax-tip">
+                <i class="pi pi-shield"></i>
+                <span><strong>Spintax anti-bloqueo:</strong> usa <code>&#123;Hola|Buenas|Qué tal&#125;</code> para alternar palabras aleatorias en cada contacto.</span>
+              </div>
+            </div>
+
+            @if (tieneSpintax()) {
+              <div class="spintax-preview-card">
+                <div class="spintax-preview-header">
+                  <span><i class="pi pi-sparkles"></i> Ejemplo de variación calculada:</span>
+                  <button type="button" class="btn-mini btn-spintax-refresh" (click)="generarEjemploSpintax()">
+                    <i class="pi pi-refresh"></i> Probar otra variante
+                  </button>
+                </div>
+                <div class="spintax-preview-text">"{{ ejemploSpintax() }}"</div>
+              </div>
+            }
 
             <label for="cj-media">Multimedia (opcional)</label>
             <select id="cj-media" name="cjMedia" [(ngModel)]="selectedMediaAssetId">
@@ -909,6 +927,16 @@ import {
     .daily-distribution-preview{display:flex;align-items:flex-start;gap:.6rem;background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46;padding:.7rem .9rem;border-radius:8px;font-size:.82rem;line-height:1.45}
     .daily-distribution-preview i{font-size:1.1rem;color:#059669;margin-top:2px}
 
+    .spintax-help{display:flex;flex-direction:column;gap:.3rem}
+    .spintax-tip{display:flex;align-items:center;gap:.4rem;color:#0369a1;background:#f0f9ff;padding:.35rem .6rem;border-radius:6px;font-size:.78rem;border:1px solid #bae6fd}
+    .spintax-tip i{color:#0284c7}
+    .spintax-preview-card{background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #3b82f6;border-radius:8px;padding:.6rem .8rem;margin-top:.4rem;display:flex;flex-direction:column;gap:.3rem}
+    .spintax-preview-header{display:flex;justify-content:space-between;align-items:center;font-size:.78rem;font-weight:700;color:#1e293b}
+    .spintax-preview-header i{color:#3b82f6}
+    .spintax-preview-text{font-size:.84rem;color:#334155;font-style:italic;background:#fff;padding:.4rem .6rem;border-radius:6px;border:1px solid #cbd5e1}
+    .btn-spintax-refresh{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:.2rem .5rem;border-radius:5px;cursor:pointer;font-size:.75rem}
+    .btn-spintax-refresh:hover{background:#dbeafe}
+
     /* SESSIONS */
     .session-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.4rem}
     .session-toggle{display:flex;gap:.35rem;flex-wrap:wrap}
@@ -1256,6 +1284,37 @@ export class CampaignsJerarquicoComponent implements OnInit {
     if (!limit || limit <= 0 || sesiones === 0 || total === 0) return 1;
     const capacidadDiaria = sesiones * limit;
     return Math.ceil(total / capacidadDiaria);
+  }
+
+  readonly ejemploSpintax = signal("");
+
+  tieneSpintax(): boolean {
+    const txt = this.messageText;
+    return Boolean(txt && txt.includes("{") && txt.includes("|") && txt.includes("}"));
+  }
+
+  generarEjemploSpintax(): void {
+    const raw = this.messageText || "";
+    const withVars = raw.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_m, key) => key === "nombre" ? "Juan" : (key === "nombre_votante" ? "Juan Pérez" : key));
+    const spintaxRegex = /\{([^{}]+)\}/g;
+    let result = withVars;
+    let iter = 0;
+    while (spintaxRegex.test(result) && iter < 15) {
+      iter++;
+      result = result.replace(spintaxRegex, (match, choicesStr: string) => {
+        if (!choicesStr.includes("|")) return match;
+        const choices = choicesStr.split("|");
+        const randomIndex = Math.floor(Math.random() * choices.length);
+        return choices[randomIndex] ?? "";
+      });
+    }
+    this.ejemploSpintax.set(result);
+  }
+
+  onMessageTextChange(): void {
+    if (this.tieneSpintax()) {
+      this.generarEjemploSpintax();
+    }
   }
 
   readonly campanias = signal<CampaignRecord[]>([]);
