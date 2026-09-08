@@ -555,7 +555,7 @@ export function createRoutes(container: AppContainer): Router {
         },
       });
     } else {
-      if (session.pairingCode && session.expectedPhoneE164 === phone) {
+      if (session.pairingCode && session.expectedPhoneE164 === phone && session.status === "PAIRING_CODE") {
         return response.json({ ok: true, code: session.pairingCode, sessionId: session.id, name: session.name });
       }
 
@@ -638,6 +638,18 @@ export function createRoutes(container: AppContainer): Router {
       } else {
         const isConn = (session.status === "CONNECTED" || session.status === "WORKING") && Boolean(session.whatsappJid);
         if (!isConn) {
+          // Si la sesión está en proceso de vinculación por CÓDIGO DE 8 DÍGITOS, NO sobreescribir ni resetear a QR!
+          const isWaitingCode = session.pairingMethod === "CODE" && Boolean(session.pairingCode) && session.status !== "DISCONNECTED" && session.status !== "DELETED";
+          if (isWaitingCode) {
+            return response.json({
+              available: false,
+              connected: false,
+              pairingMethod: "CODE",
+              pairingCode: session.pairingCode,
+              status: session.status,
+            });
+          }
+
           const isDeadOrDifferentMethod =
             session.pairingMethod !== "QR" ||
             !session.qrCode ||
@@ -673,7 +685,7 @@ export function createRoutes(container: AppContainer): Router {
       const isConnectedInitial = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
 
       // Si no tiene QR y no está conectada, esperar a que el worker emita el QR (máximo 3s para responder antes del timeout de 5s de Flutter)
-      if (!freshSession?.qrCode && !isConnectedInitial) {
+      if (!freshSession?.qrCode && !isConnectedInitial && freshSession?.pairingMethod === "QR") {
         for (let i = 0; i < 9; i++) {
           await sleep(350);
           freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });

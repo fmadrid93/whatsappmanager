@@ -44,7 +44,7 @@ const schema = z.object({
   WHATSAPP_GATEWAY_MODE: z.enum(["BAILEYS", "MOCK"]).default("BAILEYS"),
   OBJECT_STORAGE_MODE: z.enum(["S3", "MOCK"]).default("S3"),
   SESSION_LEASE_SECONDS: z.coerce.number().int().positive().default(30),
-  SESSION_SUPERVISOR_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+  SESSION_SUPERVISOR_INTERVAL_MS: z.coerce.number().int().positive().default(2000),
   QUEUE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
   QUEUE_LOCK_SECONDS: z.coerce.number().int().positive().default(60),
   QUEUE_SESSION_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),

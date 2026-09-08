@@ -267,8 +267,7 @@ export class BaileysSessionGateway implements ISessionGateway {
     if (digits.length < 8) throw new Error("Configura un número válido para generar el código de vinculación.");
 
     let lastError: unknown = null;
-    // Dar margen para que el handshake WebSocket inicial de Baileys esté conectado
-    await sleep(2000);
+    await sleep(600);
 
     for (let attempt = 1; attempt <= 5; attempt++) {
       try {
@@ -276,11 +275,37 @@ export class BaileysSessionGateway implements ISessionGateway {
         const code = await socket.requestPairingCode(digits);
         await this.sessions.savePairingCode(sessionId, code);
         logger.info({ sessionId, code }, "¡Código de vinculación generado exitosamente!");
+
+        this.clearQrTimeoutTimer(sessionId);
+        const timer = setTimeout(() => {
+          void (async () => {
+            try {
+              const current = await this.sessions.findById(sessionId);
+              if (current && current.status !== "CONNECTED") {
+                logger.info({ sessionId }, "El código de emparejamiento expiró (TTL de 3 minutos alcanzado).");
+                await this.stop(sessionId);
+                await this.authRepository.clearSession(sessionId);
+                await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
+                  disconnectReason: "pairingCodeTimeout",
+                  disconnectedAt: new Date(),
+                  lastConnectionCode: 408,
+                  lastConnectionError: "El código de vinculación expiró. Genera uno nuevo.",
+                  clearQr: true,
+                  clearPairingCode: true,
+                });
+              }
+            } catch (err) {
+              logger.warn({ err, sessionId }, "Error al expirar pairing code por timeout.");
+            }
+          })();
+        }, 180_000);
+        this.qrTimeoutTimers.set(sessionId, timer);
+
         return code;
       } catch (err) {
         lastError = err;
         logger.warn({ sessionId, attempt, err }, "Fallo temporal al solicitar pairing code; reintentando...");
-        await sleep(1500);
+        await sleep(1000);
       }
     }
     throw lastError || new Error("No se pudo generar el código de emparejamiento");
@@ -411,6 +436,7 @@ export class BaileysSessionGateway implements ISessionGateway {
           const currentSession = await this.sessions.findById(sessionId);
           const preserveQuarantine = shouldPreserveQuarantine(currentSession?.status, intentionallyStopped);
           const isConnectedSession = Boolean(currentSession?.whatsappJid || currentSession?.phoneE164);
+          const isWaitingPairingCode = currentSession?.pairingMethod === "CODE" && Boolean(currentSession?.pairingCode) && !currentSession?.whatsappJid;
 
           if (preserveQuarantine) {
             logger.warn(
@@ -436,6 +462,11 @@ export class BaileysSessionGateway implements ISessionGateway {
               clearPairingCode: true,
             });
             await this.sessions.releaseLease(sessionId, this.workerId);
+          } else if (isWaitingPairingCode) {
+            // El código ya fue emitido y estamos esperando que el usuario lo ingrese en su teléfono móvil.
+            // NO borrar credenciales ni el código. Reanudar socket para completar el handshake al ingresar el código en el celular.
+            logger.info({ sessionId, statusCode, code: currentSession?.pairingCode }, "Socket cerrado temporalmente mientras se espera ingreso de código en móvil; manteniendo pairingCode y reanudando socket.");
+            this.scheduleRestartRequired(sessionId, 2000);
           } else if (!isConnectedSession) {
             // Sesión en proceso de emparejamiento (QR o código numérico) que se cerró o expiró
             await this.authRepository.clearSession(sessionId);

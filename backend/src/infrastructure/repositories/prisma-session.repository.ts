@@ -333,7 +333,8 @@ export class PrismaSessionRepository implements ISessionRepository {
   }
 
   async expireStalePendingSessions(maxAgeMs = 120_000): Promise<number> {
-    const threshold = new Date(Date.now() - maxAgeMs);
+    const qrThreshold = new Date(Date.now() - maxAgeMs);
+    const codeThreshold = new Date(Date.now() - 180_000);
     const result = await this.prisma.whatsAppSession.updateMany({
       where: {
         deletedAt: null,
@@ -341,9 +342,19 @@ export class PrismaSessionRepository implements ISessionRepository {
         phoneE164: null,
         whatsappJid: null,
         OR: [
-          { qrUpdatedAt: { lt: threshold } },
-          { pairingCodeUpdatedAt: { lt: threshold } },
-          { updatedAt: { lt: threshold } },
+          {
+            qrCode: { not: null },
+            qrUpdatedAt: { lt: qrThreshold },
+          },
+          {
+            pairingCode: { not: null },
+            pairingCodeUpdatedAt: { lt: codeThreshold },
+          },
+          {
+            qrCode: null,
+            pairingCode: null,
+            updatedAt: { lt: qrThreshold },
+          },
         ],
       },
       data: {
@@ -354,7 +365,7 @@ export class PrismaSessionRepository implements ISessionRepository {
         pairingCodeUpdatedAt: null,
         disconnectReason: "qrTimeout",
         lastConnectionCode: 408,
-        lastConnectionError: "El código QR expiró sin ser escaneado. Presiona Revincular para generar uno nuevo.",
+        lastConnectionError: "El código de vinculación o QR expiró. Presiona Revincular para generar uno nuevo.",
         disconnectedAt: new Date(),
         leaseOwner: null,
         leaseExpiresAt: null,
