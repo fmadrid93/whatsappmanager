@@ -638,7 +638,20 @@ export function createRoutes(container: AppContainer): Router {
       } else {
         const isConn = (session.status === "CONNECTED" || session.status === "WORKING") && Boolean(session.whatsappJid);
         if (!isConn) {
+          const forceReset = request.query.reset === "true" || request.query.force === "true";
+          const isWaitingCode = !forceReset && session.pairingMethod === "CODE" && Boolean(session.pairingCode) && session.status !== "DISCONNECTED" && session.status !== "DELETED";
+          if (isWaitingCode) {
+            return response.json({
+              available: false,
+              connected: false,
+              pairingMethod: "CODE",
+              pairingCode: session.pairingCode,
+              status: session.status,
+            });
+          }
+
           const isDeadOrDifferentMethod =
+            forceReset ||
             session.pairingMethod !== "QR" ||
             !session.qrCode ||
             ["DELETED", "LOGGED_OUT", "PAIRING_FAILED", "DISCONNECTED", "NEW"].includes(session.status);
