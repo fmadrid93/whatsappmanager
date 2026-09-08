@@ -242,12 +242,15 @@ export class MessageQueueWorker {
       if (!digits) throw new Error("El contacto no tiene número E.164 normalizado.");
 
       let destinationJid = item.recipientJid;
-      if (!destinationJid) {
+      if (!destinationJid || destinationJid.endsWith("@lid")) {
         const results = await socket.onWhatsApp(digits);
         const target = results?.find((entry) => entry.exists);
-        if (!target?.jid) throw new Error("El número no está registrado en WhatsApp.");
-        destinationJid = target.jid;
-        await this.queue.setRecipientJid(item.id, target.jid);
+        if (!target) throw new Error("El número no está registrado en WhatsApp.");
+        const phoneJid = target.jid && !target.jid.endsWith("@lid")
+          ? target.jid
+          : `${digits}@s.whatsapp.net`;
+        destinationJid = phoneJid;
+        await this.queue.setRecipientJid(item.id, phoneJid);
       }
 
       const resolvedDestinationJid = destinationJid;
