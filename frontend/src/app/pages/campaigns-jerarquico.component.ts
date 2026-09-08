@@ -301,13 +301,13 @@ import {
                 [(ngModel)]="maxDailyMessagesPerSession"
                 placeholder="Ej: 20 (dejar vacío para enviar todo de inmediato)"
               />
-              @if (maxDailyMessagesPerSession && maxDailyMessagesPerSession > 0 && contactosResult()?.contacts?.length && selectedSessionIds().length > 0) {
+              @if (tieneLimiteDiarioActivo()) {
                 <div class="daily-distribution-preview">
                   <i class="pi pi-shield"></i>
                   <div>
                     <strong>Pacing anti-bloqueo activo:</strong>
-                    Con {{ selectedSessionIds().length }} sesión(es) a un máx de {{ maxDailyMessagesPerSession }} msgs/día c/u:
-                    se enviarán hasta <strong>{{ selectedSessionIds().length * maxDailyMessagesPerSession }}</strong> mensajes por día.
+                    Con {{ selectedSessionIds().length }} sesión(es) a un máx de {{ maxDailyMessagesPerSession ?? 0 }} msgs/día c/u:
+                    se enviarán hasta <strong>{{ calcularMensajesPorDia() }}</strong> mensajes por día.
                     La campaña se distribuirá automáticamente en <strong>{{ calcularDiasDistribucion() }}</strong> día(s) consecutivos sin sobrecargar tus chips.
                   </div>
                 </div>
@@ -1237,6 +1237,17 @@ export class CampaignsJerarquicoComponent implements OnInit {
   ] as const;
   defaultRegion = "PY";
   maxDailyMessagesPerSession: number | null = null;
+
+  tieneLimiteDiarioActivo(): boolean {
+    const limit = this.maxDailyMessagesPerSession;
+    return Boolean(limit && limit > 0 && (this.contactosResult()?.contacts?.length ?? 0) > 0 && this.selectedSessionIds().length > 0);
+  }
+
+  calcularMensajesPorDia(): number {
+    const limit = this.maxDailyMessagesPerSession;
+    if (!limit || limit <= 0) return 0;
+    return this.selectedSessionIds().length * limit;
+  }
 
   calcularDiasDistribucion(): number {
     const total = this.contactosResult()?.contacts?.length ?? 0;
