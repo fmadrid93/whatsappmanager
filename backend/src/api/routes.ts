@@ -245,8 +245,8 @@ export function createRoutes(container: AppContainer): Router {
         .map((session) => mapSession(session, configuredSet.has(session.id))),
       policy: {
         restrictionHeldCode: "HELD_SESSION_QUARANTINED",
-        restrictionHeldTransferAllowed: false,
-        note: "Los mensajes retenidos por cuarentena no se transfieren a otra sesión. La recuperación manual solo mueve pendientes varados por fallas técnicas.",
+        restrictionHeldTransferAllowed: true,
+        note: "Los mensajes pendientes y retenidos se reasignarán a las sesiones seleccionadas para continuar el envío.",
       },
     };
   };
@@ -2014,8 +2014,11 @@ export function createRoutes(container: AppContainer): Router {
         availableAt: new Date(Date.now() + 1000),
       });
 
-      if (result.movedMessages > 0 && ["PAUSED", "PAUSED_BY_CIRCUIT_BREAKER"].includes(campaign.status)) {
-        await container.repositories.campaigns.setPreparing(campaignId, tenantId);
+      if (result.movedMessages > 0) {
+        await container.prisma.campaign.update({
+          where: { id: campaignId },
+          data: { status: "RUNNING" },
+        });
         await container.services.integrationManagementService.emit({
           tenantId,
           eventType: "CAMPAIGN_RESUMED",

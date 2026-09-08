@@ -50,13 +50,8 @@ function technicalRecoveryWhere(input: { tenantId: string; campaignId: string },
   return {
     tenantId: input.tenantId,
     campaignId: input.campaignId,
+    status: { in: ["PENDING", "PROCESSING"] },
     AND: [
-      {
-        OR: [
-          { lastErrorCode: null },
-          { lastErrorCode: { not: HELD_SESSION_QUARANTINED } },
-        ],
-      },
       {
         OR: [
           { status: "PENDING" },
@@ -77,6 +72,7 @@ function technicalRecoveryWhere(input: { tenantId: string; campaignId: string },
           { assignedSession: { is: { leaseExpiresAt: null } } },
           { assignedSession: { is: { leaseExpiresAt: { lte: now } } } },
           { lastErrorCode: "AUTO_FAILOVER_NO_REPLACEMENT" },
+          { lastErrorCode: HELD_SESSION_QUARANTINED },
         ],
       },
     ],
