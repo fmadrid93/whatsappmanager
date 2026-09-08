@@ -638,18 +638,6 @@ export function createRoutes(container: AppContainer): Router {
       } else {
         const isConn = (session.status === "CONNECTED" || session.status === "WORKING") && Boolean(session.whatsappJid);
         if (!isConn) {
-          // Si la sesión está en proceso de vinculación por CÓDIGO DE 8 DÍGITOS, NO sobreescribir ni resetear a QR!
-          const isWaitingCode = session.pairingMethod === "CODE" && Boolean(session.pairingCode) && session.status !== "DISCONNECTED" && session.status !== "DELETED";
-          if (isWaitingCode) {
-            return response.json({
-              available: false,
-              connected: false,
-              pairingMethod: "CODE",
-              pairingCode: session.pairingCode,
-              status: session.status,
-            });
-          }
-
           const isDeadOrDifferentMethod =
             session.pairingMethod !== "QR" ||
             !session.qrCode ||
@@ -666,7 +654,7 @@ export function createRoutes(container: AppContainer): Router {
             await container.prisma.whatsAppSession.update({
               where: { id: session.id },
               data: {
-                status: "NEW",
+                status: "STARTING",
                 pairingMethod: "QR",
                 qrCode: null,
                 pairingCode: null,

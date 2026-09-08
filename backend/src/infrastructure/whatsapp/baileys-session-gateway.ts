@@ -436,7 +436,7 @@ export class BaileysSessionGateway implements ISessionGateway {
           const currentSession = await this.sessions.findById(sessionId);
           const preserveQuarantine = shouldPreserveQuarantine(currentSession?.status, intentionallyStopped);
           const isConnectedSession = Boolean(currentSession?.whatsappJid || currentSession?.phoneE164);
-          const isWaitingPairingCode = currentSession?.pairingMethod === "CODE" && Boolean(currentSession?.pairingCode) && !currentSession?.whatsappJid;
+          const isWaitingPairingCode = Boolean(currentSession?.pairingCode) && !currentSession?.whatsappJid && currentSession?.status !== "DISCONNECTED" && currentSession?.status !== "DELETED";
 
           if (preserveQuarantine) {
             logger.warn(

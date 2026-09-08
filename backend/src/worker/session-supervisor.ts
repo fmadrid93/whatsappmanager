@@ -54,6 +54,7 @@ export class SessionSupervisor {
           !owned ||
           !owns(owned.id, owned.shardKey) ||
           owned.status === "NEW" ||
+          owned.status === "STARTING" ||
           owned.status === "DISCONNECTED" ||
           owned.status === "DELETED" ||
           owned.status === "LOGGED_OUT" ||

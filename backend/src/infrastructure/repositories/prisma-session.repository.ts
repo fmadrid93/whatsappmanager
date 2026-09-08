@@ -202,6 +202,7 @@ export class PrismaSessionRepository implements ISessionRepository {
     await this.prisma.whatsAppSession.update({
       where: { id: sessionId },
       data: {
+        pairingMethod: "CODE",
         status: "PAIRING_CODE",
         pairingCode: code,
         pairingCodeUpdatedAt: new Date(),
