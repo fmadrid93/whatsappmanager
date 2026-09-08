@@ -81,6 +81,8 @@ export function classifySendFailure(error: unknown): SendFailureClassification {
       "stream errored",
       "connection replaced",
       "connection closed",
+      "session closed",
+      "sesion cerrada",
       "restart required",
       "connection failure",
       "timeout",
@@ -116,8 +118,6 @@ export function classifySendFailure(error: unknown): SendFailureClassification {
       "account blocked",
       "cuenta bloqueada",
       "cuenta suspendida",
-      "sesion cerrada",
-      "session closed",
       "multidevice mismatch",
     ])
   ) {

@@ -238,19 +238,25 @@ export class MessageQueueWorker {
       }
 
       const socket = this.sockets.get(sessionId);
+      if (!socket || !socket.user?.id) {
+        throw new Error("La sesión no está conectada en memoria.");
+      }
       const digits = item.recipientE164?.replace(/\D/g, "");
       if (!digits) throw new Error("El contacto no tiene número E.164 normalizado.");
 
       let destinationJid = item.recipientJid;
       if (!destinationJid || destinationJid.endsWith("@lid")) {
-        const results = await socket.onWhatsApp(digits);
-        const target = results?.find((entry) => entry.exists);
-        if (!target) throw new Error("El número no está registrado en WhatsApp.");
-        const phoneJid = target.jid && !target.jid.endsWith("@lid")
-          ? target.jid
-          : `${digits}@s.whatsapp.net`;
-        destinationJid = phoneJid;
-        await this.queue.setRecipientJid(item.id, phoneJid);
+        const phoneJid = `${digits}@s.whatsapp.net`;
+        try {
+          const results = await socket.onWhatsApp(digits);
+          const target = results?.find((entry) => entry.exists);
+          destinationJid = target?.jid && !target.jid.endsWith("@lid")
+            ? target.jid
+            : phoneJid;
+        } catch {
+          destinationJid = phoneJid;
+        }
+        await this.queue.setRecipientJid(item.id, destinationJid);
       }
 
       const resolvedDestinationJid = destinationJid;
@@ -275,7 +281,7 @@ export class MessageQueueWorker {
         });
       } else {
         await socket.sendPresenceUpdate("composing", resolvedDestinationJid).catch(() => {});
-        const sent = await socket.sendMessage(resolvedDestinationJid, { text: payload.text }, { messageId: item.clientMessageId });
+        const sent = await socket.sendMessage(resolvedDestinationJid, { text: payload.text });
         if (!sent?.key.id) throw new Error("WhatsApp no devolvió identificador del mensaje.");
 
         sentMessageId = sent.key.id;

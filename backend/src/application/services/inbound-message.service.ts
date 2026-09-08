@@ -362,7 +362,7 @@ export class InboundMessageService {
       }
 
       logger.debug({ conversationId: conversation.id, targetJid: remoteJid }, "Enviando respuesta del bot.");
-      sent = await socket.sendMessage(remoteJid, { text: finalText }, { messageId: this.createMessageId() });
+      sent = await socket.sendMessage(remoteJid, { text: finalText });
       logger.info(
         { conversationId: conversation.id, targetJid: remoteJid, whatsappMessageId: sent?.key.id },
         "Respuesta del bot aceptada por Baileys.",

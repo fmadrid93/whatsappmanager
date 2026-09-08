@@ -1,4 +1,4 @@
-﻿import {
+import {
   generateWAMessageFromContent,
   getContentType,
   jidNormalizedUser,
@@ -111,7 +111,6 @@ export class MediaReuseService {
 
     const outgoing = generateWAMessageFromContent(input.destinationJid, content, {
       userJid: jidNormalizedUser(socket.user.id),
-      messageId: input.clientMessageId,
     });
     if (!outgoing.message || !outgoing.key.id) {
       throw new Error("No se pudo generar el mensaje multimedia.");
