@@ -509,6 +509,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
     this.selectedQr.set(null);
     this.selectedPairingCode.set(null);
     this.selectedError.set("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
     if (this.pairingTimer) clearInterval(this.pairingTimer);
     this.refreshPairing();
     this.pairingTimer = setInterval(() => this.refreshPairing(), 2500);
