@@ -640,7 +640,8 @@ export function createRoutes(container: AppContainer): Router {
         if (!isConn) {
           const isDeadOrDifferentMethod =
             session.pairingMethod !== "QR" ||
-            ["DELETED", "LOGGED_OUT", "PAIRING_FAILED"].includes(session.status);
+            !session.qrCode ||
+            ["DELETED", "LOGGED_OUT", "PAIRING_FAILED", "DISCONNECTED", "NEW"].includes(session.status);
 
           if (isDeadOrDifferentMethod) {
             try {
@@ -653,7 +654,7 @@ export function createRoutes(container: AppContainer): Router {
             await container.prisma.whatsAppSession.update({
               where: { id: session.id },
               data: {
-                status: "STARTING",
+                status: "NEW",
                 pairingMethod: "QR",
                 qrCode: null,
                 pairingCode: null,
@@ -671,10 +672,10 @@ export function createRoutes(container: AppContainer): Router {
       let freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
       const isConnectedInitial = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
 
-      // Si no tiene QR y no está conectada, esperar unos segundos a que el worker emita el QR
+      // Si no tiene QR y no está conectada, esperar a que el worker emita el QR (máximo 3s para responder antes del timeout de 5s de Flutter)
       if (!freshSession?.qrCode && !isConnectedInitial) {
-        for (let i = 0; i < 12; i++) {
-          await sleep(500);
+        for (let i = 0; i < 9; i++) {
+          await sleep(350);
           freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
           if (freshSession?.qrCode || freshSession?.whatsappJid) break;
         }
