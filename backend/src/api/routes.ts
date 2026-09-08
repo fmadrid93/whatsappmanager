@@ -650,13 +650,14 @@ export function createRoutes(container: AppContainer): Router {
             });
           }
 
-          const isDeadOrDifferentMethod =
-            forceReset ||
-            session.pairingMethod !== "QR" ||
-            !session.qrCode ||
-            ["DELETED", "LOGGED_OUT", "PAIRING_FAILED", "DISCONNECTED", "NEW"].includes(session.status);
+          const isDeadStatus = ["DELETED", "LOGGED_OUT", "PAIRING_FAILED", "DISCONNECTED", "NEW"].includes(session.status);
+          const isDifferentMethod = session.pairingMethod !== "QR";
+          const isStaleQr = Boolean(session.qrUpdatedAt && Date.now() - new Date(session.qrUpdatedAt).getTime() > 120_000);
+          const isStaleStarting = session.status === "STARTING" && Date.now() - new Date(session.updatedAt).getTime() > 45_000;
 
-          if (isDeadOrDifferentMethod) {
+          const shouldReset = forceReset || isDeadStatus || isDifferentMethod || isStaleQr || isStaleStarting;
+
+          if (shouldReset) {
             try {
               await container.whatsapp?.sessionGateway?.stop(session.id);
             } catch {}

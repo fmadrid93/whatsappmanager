@@ -89,7 +89,7 @@ export class PrismaSessionRepository implements ISessionRepository {
     const rows = await this.prisma.whatsAppSession.findMany({
       where: {
         deletedAt: null,
-        status: { in: ["NEW", "STARTING", "CONNECTING", "CONNECTED", "WORKING", "PAIRING_CODE"] },
+        status: { in: ["NEW", "STARTING", "CONNECTING", "CONNECTED", "WORKING", "PAIRING_CODE", "QR_REQUIRED"] },
 
         OR: [
           { leaseOwner: null },

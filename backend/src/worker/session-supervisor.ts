@@ -48,17 +48,21 @@ export class SessionSupervisor {
         : rendezvousOwner(sessionId, activeWorkerIds) === this.workerId;
       metrics.gauge("wa_sessions_local", "WhatsApp sockets owned by this worker.", { worker: this.workerId }, this.registry.ids().length);
 
+      const stoppedStatuses = new Set([
+        "STARTING",
+        "DISCONNECTED",
+        "DELETED",
+        "LOGGED_OUT",
+        "QUARANTINED",
+        "PAIRING_FAILED",
+      ]);
+
       for (const sessionId of this.registry.ids()) {
         const owned = await this.sessions.findById(sessionId);
         if (
           !owned ||
           !owns(owned.id, owned.shardKey) ||
-          owned.status === "NEW" ||
-          owned.status === "STARTING" ||
-          owned.status === "DISCONNECTED" ||
-          owned.status === "DELETED" ||
-          owned.status === "LOGGED_OUT" ||
-          owned.status === "QUARANTINED"
+          stoppedStatuses.has(owned.status)
         ) {
           logger.info({ sessionId, status: owned?.status }, "Deteniendo socket en memoria para sincronizar con nuevo estado de BD.");
           await this.gateway.stop(sessionId);

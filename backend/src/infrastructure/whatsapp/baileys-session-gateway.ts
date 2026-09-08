@@ -139,11 +139,6 @@ export class BaileysSessionGateway implements ISessionGateway {
         return;
       }
 
-      // Si la sesión es nueva o no estaba vinculada con JID, limpiar credenciales previas para garantizar handshake limpio
-      if (!session.whatsappJid && !session.phoneE164) {
-        await this.authRepository.clearSession(sessionId);
-      }
-
       await this.sessions.updateStatus(sessionId, "CONNECTING", {
         lastConnectionAt: new Date(),
         lastConnectionError: null,
@@ -467,42 +462,56 @@ export class BaileysSessionGateway implements ISessionGateway {
             // NO borrar credenciales ni el código. Reanudar socket para completar el handshake al ingresar el código en el celular.
             logger.info({ sessionId, statusCode, code: currentSession?.pairingCode }, "Socket cerrado temporalmente mientras se espera ingreso de código en móvil; manteniendo pairingCode y reanudando socket.");
             this.scheduleRestartRequired(sessionId, 2000);
-          } else if (!isConnectedSession) {
-            // Sesión en proceso de emparejamiento (QR o código numérico) que se cerró o expiró
-            await this.authRepository.clearSession(sessionId);
-            logger.info({ sessionId, statusCode }, "Cierre de socket en sesión no vinculada. Pasando a DISCONNECTED.");
-            await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
-              disconnectReason: isLoggedOut ? "authRejected" : "qrTimeout",
-              disconnectedAt: new Date(),
-              lastConnectionCode: statusCode ?? 408,
-              lastConnectionError: isLoggedOut
-                ? "Credenciales no autorizadas o QR no escaneado a tiempo. Presiona Revincular para generar un nuevo código."
-                : "El código QR expiró sin ser escaneado. Presiona Revincular para generar uno nuevo.",
-              lastConnectionAt: new Date(),
-              clearQr: true,
-              clearPairingCode: true,
-            });
-            await this.sessions.releaseLease(sessionId, this.workerId);
-          } else if (isLoggedOut) {
-            // Sesión previamente conectada que fue desvinculada por el usuario desde WhatsApp en el teléfono
-            logger.warn({ sessionId, statusCode }, "Sesión cerrada por el usuario desde WhatsApp (logged out).");
-            await this.authRepository.clearSession(sessionId);
-            await this.sessions.updateStatus(sessionId, "LOGGED_OUT", {
-              disconnectReason: "loggedOut",
-              disconnectedAt: new Date(),
-              lastConnectionCode: statusCode ?? 401,
-              lastConnectionError: "Sesión cerrada desde el dispositivo móvil. Presiona Revincular para volver a conectar.",
-              lastConnectionAt: new Date(),
-              whatsappJid: null,
-              phoneE164: null,
-              clearQr: true,
-              clearPairingCode: true,
-            });
-            await this.failover.handleLoggedOut(sessionId);
-            await this.sessions.releaseLease(sessionId, this.workerId);
           } else if (restartRequired) {
             logger.info({ sessionId, statusCode, connectionError }, "Reinicio/reconexión requerida por Baileys; reanudando socket...");
             this.scheduleRestartRequired(sessionId, 2000);
+          } else if (isLoggedOut) {
+            if (isConnectedSession) {
+              // Sesión previamente conectada que fue desvinculada por el usuario desde WhatsApp en el teléfono
+              logger.warn({ sessionId, statusCode }, "Sesión cerrada por el usuario desde WhatsApp (logged out).");
+              await this.authRepository.clearSession(sessionId);
+              await this.sessions.updateStatus(sessionId, "LOGGED_OUT", {
+                disconnectReason: "loggedOut",
+                disconnectedAt: new Date(),
+                lastConnectionCode: statusCode ?? 401,
+                lastConnectionError: "Sesión cerrada desde el dispositivo móvil. Presiona Revincular para volver a conectar.",
+                lastConnectionAt: new Date(),
+                whatsappJid: null,
+                phoneE164: null,
+                clearQr: true,
+                clearPairingCode: true,
+              });
+              await this.failover.handleLoggedOut(sessionId);
+              await this.sessions.releaseLease(sessionId, this.workerId);
+            } else {
+              // Sesión en emparejamiento que recibió 401
+              await this.authRepository.clearSession(sessionId);
+              logger.info({ sessionId, statusCode }, "Cierre de socket en sesión no vinculada con 401. Pasando a DISCONNECTED.");
+              await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
+                disconnectReason: "authRejected",
+                disconnectedAt: new Date(),
+                lastConnectionCode: statusCode ?? 401,
+                lastConnectionError: "Credenciales no autorizadas o expiradas. Presiona Revincular para generar un nuevo código.",
+                lastConnectionAt: new Date(),
+                clearQr: true,
+                clearPairingCode: true,
+              });
+              await this.sessions.releaseLease(sessionId, this.workerId);
+            }
+          } else if (!isConnectedSession) {
+            // Sesión en proceso de emparejamiento que cerró sin restart
+            await this.authRepository.clearSession(sessionId);
+            logger.info({ sessionId, statusCode }, "Cierre de socket en sesión no vinculada. Pasando a DISCONNECTED.");
+            await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
+              disconnectReason: "qrTimeout",
+              disconnectedAt: new Date(),
+              lastConnectionCode: statusCode ?? 408,
+              lastConnectionError: "El código QR expiró sin ser escaneado. Presiona Revincular para generar uno nuevo.",
+              lastConnectionAt: new Date(),
+              clearQr: true,
+              clearPairingCode: true,
+            });
+            await this.sessions.releaseLease(sessionId, this.workerId);
           } else {
             logger.info({ sessionId, statusCode }, "Desconexión transitoria de sesión vinculada; reintentando reconexión automática.");
             this.scheduleRestartRequired(sessionId, 3000);
