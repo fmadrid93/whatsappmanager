@@ -261,6 +261,28 @@ export class PrismaSessionRepository implements ISessionRepository {
     if (result.count !== 1) throw new Error("Sesión no encontrada.");
   }
 
+  async requestPairingCode(sessionId: string, tenantId: string, expectedPhoneE164: string): Promise<void> {
+    const result = await this.prisma.whatsAppSession.updateMany({
+      where: { id: sessionId, tenantId, deletedAt: null },
+      data: {
+        status: "NEW",
+        pairingMethod: "CODE",
+        expectedPhoneE164,
+        pairingCode: null,
+        pairingCodeUpdatedAt: null,
+        qrCode: null,
+        qrUpdatedAt: null,
+        disconnectReason: null,
+        lastConnectionCode: null,
+        lastConnectionError: null,
+        lastConnectionAt: new Date(),
+        leaseOwner: null,
+        leaseExpiresAt: null,
+      },
+    });
+    if (result.count !== 1) throw new Error("Sesión no encontrada.");
+  }
+
   async archive(sessionId: string, tenantId: string): Promise<void> {
     const result = await this.prisma.whatsAppSession.updateMany({
       where: { id: sessionId, tenantId, deletedAt: null },

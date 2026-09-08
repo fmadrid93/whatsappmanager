@@ -50,7 +50,15 @@ export class SessionSupervisor {
 
       for (const sessionId of this.registry.ids()) {
         const owned = await this.sessions.findById(sessionId);
-        if (!owned || !owns(owned.id, owned.shardKey) || owned.status === "DISCONNECTED" || owned.status === "DELETED" || owned.status === "LOGGED_OUT" || owned.status === "QUARANTINED") {
+        if (
+          !owned ||
+          !owns(owned.id, owned.shardKey) ||
+          owned.status === "NEW" ||
+          owned.status === "DISCONNECTED" ||
+          owned.status === "DELETED" ||
+          owned.status === "LOGGED_OUT" ||
+          owned.status === "QUARANTINED"
+        ) {
           logger.info({ sessionId, status: owned?.status }, "Deteniendo socket en memoria para sincronizar con nuevo estado de BD.");
           await this.gateway.stop(sessionId);
           await this.sessions.releaseLease(sessionId, this.workerId);

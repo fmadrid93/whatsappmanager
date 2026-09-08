@@ -1403,7 +1403,24 @@ export function createRoutes(container: AppContainer): Router {
     auth,
     requirePermission(permissions.SESSION_MANAGE),
     asyncHandler(async (request, response) => {
-      const session = await container.services.sessionService.get(request.auth!.tenantId, requireRouteParam(request, "id"));
+      const tenantId = request.auth!.tenantId;
+      const sessionId = requireRouteParam(request, "id");
+      let session = await container.services.sessionService.get(tenantId, sessionId);
+
+      if (
+        !session.qrCode &&
+        !session.pairingCode &&
+        session.status !== "CONNECTED" &&
+        session.status !== "DISCONNECTED" &&
+        session.status !== "QUARANTINED"
+      ) {
+        for (let i = 0; i < 6; i++) {
+          await sleep(500);
+          session = await container.services.sessionService.get(tenantId, sessionId);
+          if (session.qrCode || session.pairingCode || session.status === "CONNECTED") break;
+        }
+      }
+
       response.json({
         status: session.status,
         pairingMethod: session.pairingMethod,
@@ -1423,12 +1440,10 @@ export function createRoutes(container: AppContainer): Router {
     requirePermission(permissions.SESSION_MANAGE),
     asyncHandler(async (request, response) => {
       const id = requireRouteParam(request, "id");
-      const session = await container.services.sessionService.get(request.auth!.tenantId, id);
       const body = z.object({ phone: z.string().max(30).optional() }).parse(request.body ?? {});
-      const phone = body.phone || session.expectedPhoneE164;
-      const code = await container.whatsapp.sessionGateway.requestPairingCode(id, phone);
+      await container.services.sessionService.requestPairingCode(request.auth!.tenantId, id, body.phone);
       await audit(request, "SESSION_PAIRING_CODE_REQUESTED", "WhatsAppSession", id);
-      response.json({ code });
+      response.status(202).json({ ok: true, message: "Solicitud de código iniciada." });
     }),
   );
 

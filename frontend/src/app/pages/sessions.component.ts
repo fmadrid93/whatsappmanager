@@ -66,16 +66,23 @@ import { ApiService, type SessionRecord, type Voto1x10Jerarquia } from "../core/
           <div class="qr-box">
             @if (selectedQr()) {
               <img [src]="selectedQr()" alt="Código QR de WhatsApp" />
+              <div class="muted small" style="margin-top: 0.5rem;">Escanea este código con WhatsApp en tu celular.</div>
             } @else if (selectedPairingCode()) {
               <div class="pairing-code">{{ selectedPairingCode() }}</div>
               <div class="muted">WhatsApp → Dispositivos vinculados → Vincular con número de teléfono.</div>
+            } @else if (loadingPairing()) {
+              <div class="loading-state" style="padding: 2rem 1rem; text-align: center;">
+                <i class="pi pi-spin pi-spinner" style="font-size: 2.5rem; color: #2563eb; display: block; margin-bottom: 0.75rem;"></i>
+                <strong style="color: #1e293b; font-size: 1rem;">Generando código en vivo...</strong>
+                <div class="muted small" style="margin-top: 0.25rem;">Conectando con los servidores de WhatsApp...</div>
+              </div>
             } @else {
-              <div class="muted">Crea una sesión o selecciona “Ver vinculación”.</div>
+              <div class="muted">Crea una sesión o selecciona “Ver vinculación” / “Revincular”.</div>
             }
           </div>
 
           @if (selectedStatus()) {
-            <div class="status-line"><strong>Estado:</strong> {{ selectedStatus() }}</div>
+            <div class="status-line"><strong>Estado:</strong> {{ sessionStatusLabel(selectedStatus()) }}</div>
           }
           @if (selectedError()) {
             <div class="notice danger">
@@ -454,6 +461,8 @@ export class SessionsComponent implements OnInit, OnDestroy {
     });
   });
 
+  readonly loadingPairing = signal(false);
+
   name = "";
   expectedPhone = "";
   pairingMethod: "QR" | "CODE" = "QR";
@@ -484,6 +493,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
       return;
     }
     this.saving.set(true);
+    this.loadingPairing.set(true);
     this.api.createSession({
       name: this.name,
       expectedPhone: this.expectedPhone.trim() || undefined,
@@ -494,36 +504,54 @@ export class SessionsComponent implements OnInit, OnDestroy {
         this.expectedPhone = "";
         this.load();
         this.watchPairing(session);
-        this.messages.add({ severity: "success", summary: "Sesión creada" });
+        this.messages.add({ severity: "success", summary: "Sesión creada", detail: "Generando código de vinculación..." });
       },
       error: (error: { error?: { message?: string } }) => {
         this.messages.add({ severity: "error", summary: "No se pudo crear", detail: error.error?.message });
         this.saving.set(false);
+        this.loadingPairing.set(false);
       },
       complete: () => this.saving.set(false),
     });
   }
 
   watchPairing(session: SessionRecord): void {
+    if (session.status === "DISCONNECTED" || session.status === "LOGGED_OUT" || session.status === "PAIRING_FAILED") {
+      this.relink(session);
+      return;
+    }
     this.selectedSessionId = session.id;
     this.selectedQr.set(null);
     this.selectedPairingCode.set(null);
     this.selectedError.set("");
+    this.selectedStatus.set(session.status);
+    this.loadingPairing.set(session.status !== "CONNECTED");
     window.scrollTo({ top: 0, behavior: "smooth" });
     if (this.pairingTimer) clearInterval(this.pairingTimer);
     this.refreshPairing();
-    this.pairingTimer = setInterval(() => this.refreshPairing(), 2500);
+    this.pairingTimer = setInterval(() => this.refreshPairing(), 2000);
   }
 
   requestCode(session: SessionRecord): void {
+    this.selectedSessionId = session.id;
+    this.selectedQr.set(null);
+    this.selectedPairingCode.set(null);
+    this.selectedError.set("");
+    this.selectedStatus.set("CONNECTING");
+    this.loadingPairing.set(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    this.messages.add({ severity: "info", summary: "Generando código", detail: "Solicitando nuevo código a WhatsApp..." });
     this.api.requestPairingCode(session.id, session.expectedPhoneE164).subscribe({
-      next: (result) => {
-        this.selectedSessionId = session.id;
-        this.selectedPairingCode.set(result.code);
-        this.watchPairing(session);
+      next: () => {
+        this.load();
+        if (this.pairingTimer) clearInterval(this.pairingTimer);
+        this.refreshPairing();
+        this.pairingTimer = setInterval(() => this.refreshPairing(), 2000);
       },
-      error: (error: { error?: { message?: string } }) =>
-        this.messages.add({ severity: "error", summary: "No se pudo generar", detail: error.error?.message }),
+      error: (error: { error?: { message?: string } }) => {
+        this.loadingPairing.set(false);
+        this.messages.add({ severity: "error", summary: "No se pudo generar", detail: error.error?.message });
+      },
     });
   }
 
@@ -536,9 +564,25 @@ export class SessionsComponent implements OnInit, OnDestroy {
   }
 
   relink(session: SessionRecord): void {
-    this.api.relinkSession(session.id).subscribe(() => {
-      this.load();
-      this.watchPairing(session);
+    this.selectedSessionId = session.id;
+    this.selectedQr.set(null);
+    this.selectedPairingCode.set(null);
+    this.selectedError.set("");
+    this.selectedStatus.set("CONNECTING");
+    this.loadingPairing.set(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    this.messages.add({ severity: "info", summary: "Iniciando vinculación", detail: "Generando nuevo código QR en vivo..." });
+    this.api.relinkSession(session.id).subscribe({
+      next: () => {
+        this.load();
+        if (this.pairingTimer) clearInterval(this.pairingTimer);
+        this.refreshPairing();
+        this.pairingTimer = setInterval(() => this.refreshPairing(), 2000);
+      },
+      error: (error: { error?: { message?: string } }) => {
+        this.loadingPairing.set(false);
+        this.messages.add({ severity: "error", summary: "No se pudo revincular", detail: error.error?.message });
+      },
     });
   }
 
@@ -554,6 +598,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
   sessionStatusLabel(status: string): string {
     const labels: Record<string, string> = {
       NEW: "NUEVA",
+      STARTING: "INICIANDO",
       CONNECTING: "CONECTANDO",
       CONNECTED: "CONECTADA",
       DISCONNECTED: "DESCONECTADA",
@@ -577,17 +622,26 @@ export class SessionsComponent implements OnInit, OnDestroy {
 
   private refreshPairing(): void {
     if (!this.selectedSessionId) return;
-    this.api.sessionQr(this.selectedSessionId).subscribe((result) => {
-      this.selectedQr.set(result.qrDataUrl);
-      this.selectedPairingCode.set(result.pairingCode);
-      this.selectedStatus.set(result.status);
-      this.selectedError.set(result.lastConnectionError || "");
-      this.selectedErrorCode.set(result.lastConnectionCode);
-      this.load();
-      if (["CONNECTED", "PAIRING_FAILED", "LOGGED_OUT", "QUARANTINED", "DELETED"].includes(result.status)) {
-        if (this.pairingTimer) clearInterval(this.pairingTimer);
-        this.pairingTimer = undefined;
-      }
+    this.api.sessionQr(this.selectedSessionId).subscribe({
+      next: (result) => {
+        this.selectedQr.set(result.qrDataUrl);
+        this.selectedPairingCode.set(result.pairingCode);
+        this.selectedStatus.set(result.status);
+        this.selectedError.set(result.lastConnectionError || "");
+        this.selectedErrorCode.set(result.lastConnectionCode);
+        if (result.qrDataUrl || result.pairingCode) {
+          this.loadingPairing.set(false);
+        }
+        this.load();
+        if (["CONNECTED", "PAIRING_FAILED", "LOGGED_OUT", "QUARANTINED", "DELETED"].includes(result.status)) {
+          this.loadingPairing.set(false);
+          if (this.pairingTimer) clearInterval(this.pairingTimer);
+          this.pairingTimer = undefined;
+        }
+      },
+      error: () => {
+        this.loadingPairing.set(false);
+      },
     });
   }
 
@@ -598,6 +652,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
     this.selectedStatus.set("");
     this.selectedError.set("");
     this.selectedErrorCode.set(undefined);
+    this.loadingPairing.set(false);
     if (this.pairingTimer) clearInterval(this.pairingTimer);
     this.pairingTimer = undefined;
   }

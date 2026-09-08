@@ -67,6 +67,7 @@ export interface ISessionRepository {
   setBotActive(sessionId: string, tenantId: string, active: boolean): Promise<void>;
   quarantine(sessionId: string, reason: string, connectionCode?: number): Promise<void>;
   requestRelink(sessionId: string, tenantId: string): Promise<void>;
+  requestPairingCode(sessionId: string, tenantId: string, expectedPhoneE164: string): Promise<void>;
   archive(sessionId: string, tenantId: string): Promise<void>;
   listConnectedOwnedByWorker(workerId: string): Promise<SessionRecord[]>;
   findFailoverSession(campaignId: string, failedSessionId: string): Promise<SessionRecord | null>;

@@ -139,6 +139,11 @@ export class BaileysSessionGateway implements ISessionGateway {
         return;
       }
 
+      // Si la sesión es nueva o no estaba vinculada con JID, limpiar credenciales previas para garantizar handshake limpio
+      if (!session.whatsappJid && !session.phoneE164) {
+        await this.authRepository.clearSession(sessionId);
+      }
+
       await this.sessions.updateStatus(sessionId, "CONNECTING", {
         lastConnectionAt: new Date(),
         lastConnectionError: null,
@@ -392,21 +397,20 @@ export class BaileysSessionGateway implements ISessionGateway {
           const statusCode = disconnectCode(error);
           const connectionError = errorText(error);
           const normalizedErr = connectionError.toLowerCase();
+
           const isConflict =
             statusCode === 440 ||
             normalizedErr.includes("conflict") ||
             normalizedErr.includes("stream errored") ||
-            normalizedErr.includes("connection replaced") ||
-            normalizedErr.includes("connection closed") ||
-            normalizedErr.includes("restart required") ||
-            normalizedErr.includes("connection failure");
+            normalizedErr.includes("connection replaced");
 
-          const loggedOut = (statusCode === DisconnectReason.loggedOut || statusCode === 401) && !isConflict;
+          const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+          const isPairingRejected = statusCode === 405;
           const restartRequired = isRestartRequiredStatus(statusCode) || isConflict;
-          const pairingRejected = statusCode === 405;
           const intentionallyStopped = this.stoppingSessions.has(sessionId);
           const currentSession = await this.sessions.findById(sessionId);
           const preserveQuarantine = shouldPreserveQuarantine(currentSession?.status, intentionallyStopped);
+          const isConnectedSession = Boolean(currentSession?.whatsappJid || currentSession?.phoneE164);
 
           if (preserveQuarantine) {
             logger.warn(
@@ -418,82 +422,74 @@ export class BaileysSessionGateway implements ISessionGateway {
               },
               "Socket cerrado por cuarentena; se conserva el estado QUARANTINED.",
             );
-          } else if (loggedOut) {
-            // Si la sesión está en proceso de emparejamiento por código, el cierre es transitorio de Baileys mientras el usuario ingresa el código en su móvil
-            if (currentSession?.pairingMethod === "CODE" && !currentSession?.whatsappJid) {
-              logger.info({ sessionId, statusCode }, "Cierre de socket durante emparejamiento por código; manteniendo pairingCode activo.");
-              await this.sessions.updateStatus(sessionId, "PAIRING_CODE", {
-                lastConnectionCode: statusCode ?? 401,
-                lastConnectionError: null,
-                lastConnectionAt: new Date(),
-              });
-            } else {
-              await this.authRepository.clearSession(sessionId);
-              await this.sessions.updateStatus(sessionId, "LOGGED_OUT", {
-                disconnectReason: "loggedOut",
-                disconnectedAt: new Date(),
-                lastConnectionCode: statusCode ?? 401,
-                lastConnectionError: connectionError,
-                lastConnectionAt: new Date(),
-                whatsappJid: null,
-                phoneE164: null,
-                clearQr: true,
-                clearPairingCode: true,
-              });
-              await this.failover.handleLoggedOut(sessionId);
-              await this.sessions.releaseLease(sessionId, this.workerId);
-            }
-
-          } else if (pairingRejected) {
+          } else if (intentionallyStopped) {
+            await this.sessions.releaseLease(sessionId, this.workerId);
+          } else if (isPairingRejected) {
+            await this.authRepository.clearSession(sessionId);
             await this.sessions.updateStatus(sessionId, "PAIRING_FAILED", {
               disconnectReason: "405",
               disconnectedAt: new Date(),
               lastConnectionCode: 405,
-              lastConnectionError: "WhatsApp rechazó el emparejamiento antes de emitir el QR/código.",
+              lastConnectionError: "WhatsApp rechazó el emparejamiento antes de emitir el QR/código. Presiona Revincular para intentar de nuevo.",
               lastConnectionAt: new Date(),
               clearQr: true,
               clearPairingCode: true,
             });
             await this.sessions.releaseLease(sessionId, this.workerId);
+          } else if (!isConnectedSession) {
+            // Sesión en proceso de emparejamiento (QR o código numérico) que se cerró o expiró
+            await this.authRepository.clearSession(sessionId);
+            logger.info({ sessionId, statusCode }, "Cierre de socket en sesión no vinculada. Pasando a DISCONNECTED.");
+            await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
+              disconnectReason: isLoggedOut ? "authRejected" : "qrTimeout",
+              disconnectedAt: new Date(),
+              lastConnectionCode: statusCode ?? 408,
+              lastConnectionError: isLoggedOut
+                ? "Credenciales no autorizadas o QR no escaneado a tiempo. Presiona Revincular para generar un nuevo código."
+                : "El código QR expiró sin ser escaneado. Presiona Revincular para generar uno nuevo.",
+              lastConnectionAt: new Date(),
+              clearQr: true,
+              clearPairingCode: true,
+            });
+            await this.sessions.releaseLease(sessionId, this.workerId);
+          } else if (isLoggedOut) {
+            // Sesión previamente conectada que fue desvinculada por el usuario desde WhatsApp en el teléfono
+            logger.warn({ sessionId, statusCode }, "Sesión cerrada por el usuario desde WhatsApp (logged out).");
+            await this.authRepository.clearSession(sessionId);
+            await this.sessions.updateStatus(sessionId, "LOGGED_OUT", {
+              disconnectReason: "loggedOut",
+              disconnectedAt: new Date(),
+              lastConnectionCode: statusCode ?? 401,
+              lastConnectionError: "Sesión cerrada desde el dispositivo móvil. Presiona Revincular para volver a conectar.",
+              lastConnectionAt: new Date(),
+              whatsappJid: null,
+              phoneE164: null,
+              clearQr: true,
+              clearPairingCode: true,
+            });
+            await this.failover.handleLoggedOut(sessionId);
+            await this.sessions.releaseLease(sessionId, this.workerId);
           } else if (restartRequired) {
             logger.info({ sessionId, statusCode, connectionError }, "Reinicio/reconexión requerida por Baileys; reanudando socket...");
             this.scheduleRestartRequired(sessionId, 2000);
-          } else if (!intentionallyStopped) {
-            const isUnauthenticated = !currentSession?.phoneE164 && !currentSession?.whatsappJid;
-            if (isUnauthenticated) {
-              logger.info({ sessionId, statusCode }, "El código QR o emparejamiento expiró o se cerró sin vincular. Pasando a DISCONNECTED.");
-              await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
-                disconnectReason: "qrTimeout",
-                disconnectedAt: new Date(),
-                lastConnectionCode: statusCode ?? 408,
-                lastConnectionError: "El código QR expiró sin ser escaneado. Genera uno nuevo cuando estés listo.",
-                lastConnectionAt: new Date(),
-                clearQr: true,
-                clearPairingCode: true,
-              });
-              await this.sessions.releaseLease(sessionId, this.workerId);
-            } else {
-              // Desconexión transitoria de sesión vinculada: reintentar reconexión conservando la sesión activa
-              logger.info({ sessionId, statusCode }, "Desconexión transitoria de sesión vinculada; reintentando reconexión automática.");
-              this.scheduleRestartRequired(sessionId, 2000);
-            }
           } else {
-            await this.sessions.releaseLease(sessionId, this.workerId);
+            logger.info({ sessionId, statusCode }, "Desconexión transitoria de sesión vinculada; reintentando reconexión automática.");
+            this.scheduleRestartRequired(sessionId, 3000);
           }
 
           logger.warn(
             {
               sessionId,
               statusCode,
-              loggedOut,
+              isLoggedOut,
               restartRequired,
-              pairingRejected,
+              pairingRejected: isPairingRejected,
               intentionallyStopped,
               preserveQuarantine,
             },
             preserveQuarantine
               ? "Sesión en cuarentena; socket cerrado sin reactivar."
-              : loggedOut
+              : isLoggedOut
                 ? "Sesión cerrada (logged out)."
                 : "Desconexión de socket procesada.",
           );

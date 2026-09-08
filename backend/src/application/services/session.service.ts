@@ -1,4 +1,4 @@
-﻿import type { IBaileysAuthRepository } from "../ports/repositories/baileys-auth.repository.js";
+import type { IBaileysAuthRepository } from "../ports/repositories/baileys-auth.repository.js";
 import type { ISessionRepository, PairingMethod } from "../ports/repositories/session.repository.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { TenantCapacityService } from "./tenant-capacity.service.js";
@@ -54,6 +54,19 @@ export class SessionService {
     const session = await this.get(tenantId, id);
     await this.auth.clearSession(session.id);
     await this.sessions.requestRelink(session.id, tenantId);
+  }
+
+  async requestPairingCode(tenantId: string, id: string, phone?: string): Promise<void> {
+    const session = await this.get(tenantId, id);
+    let expectedPhoneE164 = session.expectedPhoneE164;
+    if (phone?.trim()) {
+      expectedPhoneE164 = this.phones.normalize(phone, this.defaultRegion).e164;
+    }
+    if (!expectedPhoneE164) {
+      throw new HttpError(400, "Debes ingresar un número de teléfono válido para generar el código.");
+    }
+    await this.auth.clearSession(session.id);
+    await this.sessions.requestPairingCode(session.id, tenantId, expectedPhoneE164);
   }
 
   async remove(tenantId: string, id: string): Promise<void> {
