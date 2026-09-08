@@ -624,12 +624,14 @@ export class SessionsComponent implements OnInit, OnDestroy {
     if (!this.selectedSessionId) return;
     this.api.sessionQr(this.selectedSessionId).subscribe({
       next: (result) => {
-        this.selectedQr.set(result.qrDataUrl);
+        const rawRes = result as unknown as { qrDataUrl?: string; qr?: string; qrPngBase64?: string; pairingCode?: string; status: string; lastConnectionError?: string; lastConnectionCode?: number };
+        const qr = rawRes.qrDataUrl || rawRes.qr || (rawRes.qrPngBase64 ? `data:image/png;base64,${rawRes.qrPngBase64}` : null);
+        this.selectedQr.set(qr);
         this.selectedPairingCode.set(result.pairingCode);
         this.selectedStatus.set(result.status);
         this.selectedError.set(result.lastConnectionError || "");
         this.selectedErrorCode.set(result.lastConnectionCode);
-        if (result.qrDataUrl || result.pairingCode) {
+        if (qr || result.pairingCode) {
           this.loadingPairing.set(false);
         }
         this.load();

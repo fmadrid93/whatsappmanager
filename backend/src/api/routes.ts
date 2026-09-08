@@ -703,6 +703,7 @@ export function createRoutes(container: AppContainer): Router {
         available: Boolean(freshSession?.qrCode) && !isConnected,
         connected: isConnected,
         qr: qrDataUrl ?? "",
+        qrDataUrl: qrDataUrl ?? "",
         qrPngBase64: isConnected ? null : qrPngBase64,
         qrCode: isConnected ? null : (freshSession?.qrCode ?? null),
         status: freshSession?.status ?? "STARTING",
