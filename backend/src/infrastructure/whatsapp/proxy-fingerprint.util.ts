@@ -60,14 +60,10 @@ export function buildProxyAgent(
 }
 
 const VALID_BROWSER_FINGERPRINTS: Array<[string, string, string]> = [
-  Browsers.macOS("Chrome"),
-  Browsers.macOS("Safari"),
-  Browsers.macOS("Desktop"),
   Browsers.windows("Chrome"),
   Browsers.windows("Edge"),
-  Browsers.windows("Firefox"),
+  Browsers.macOS("Chrome"),
   Browsers.ubuntu("Chrome"),
-  Browsers.ubuntu("Firefox"),
 ];
 
 /**

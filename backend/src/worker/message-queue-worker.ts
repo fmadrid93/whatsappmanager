@@ -245,14 +245,12 @@ export class MessageQueueWorker {
       if (!digits) throw new Error("El contacto no tiene número E.164 normalizado.");
 
       let destinationJid = item.recipientJid;
-      if (!destinationJid || destinationJid.endsWith("@lid")) {
+      if (!destinationJid) {
         const phoneJid = `${digits}@s.whatsapp.net`;
         try {
           const results = await socket.onWhatsApp(digits);
           const target = results?.find((entry) => entry.exists);
-          destinationJid = target?.jid && !target.jid.endsWith("@lid")
-            ? target.jid
-            : phoneJid;
+          destinationJid = target?.jid || phoneJid;
         } catch {
           destinationJid = phoneJid;
         }
@@ -270,37 +268,44 @@ export class MessageQueueWorker {
         return false;
       }
 
-      let sentMessageId: string;
-      if (item.mediaAssetId) {
-        sentMessageId = await this.mediaReuse.sendPrepared({
-          mediaAssetId: item.mediaAssetId,
-          sessionId,
-          destinationJid: resolvedDestinationJid,
-          caption: payload.caption ?? payload.text,
-          clientMessageId: item.clientMessageId,
-        });
-      } else {
-        await socket.sendPresenceUpdate("composing", resolvedDestinationJid).catch(() => {});
-        const sent = await socket.sendMessage(resolvedDestinationJid, { text: payload.text });
-        if (!sent?.key.id) throw new Error("WhatsApp no devolvió identificador del mensaje.");
+      // Simulación de escritura humana (1.5s a 3.5s)
+      await socket.sendPresenceUpdate("composing", resolvedDestinationJid).catch(() => {});
+      await sleep(randomBetween(1500, 3500));
 
-        sentMessageId = sent.key.id;
-        if (sent.message) {
-          await this.messages.save({
-            tenantId: item.tenantId,
+      let sentMessageId: string;
+      try {
+        if (item.mediaAssetId) {
+          sentMessageId = await this.mediaReuse.sendPrepared({
+            mediaAssetId: item.mediaAssetId,
             sessionId,
-            campaignId: item.campaignId,
-            queueItemId: item.id,
-            whatsappMessageId: sentMessageId,
-            remoteJid: resolvedDestinationJid,
-            direction: "OUTBOUND",
-            messageType: getContentType(sent.message) ?? "conversation",
-            status: "SUBMITTED",
-            fromMe: true,
-            payload: Buffer.from(proto.Message.encode(sent.message).finish()),
-            messageTimestamp: new Date(),
+            destinationJid: resolvedDestinationJid,
+            caption: payload.caption ?? payload.text,
+            clientMessageId: item.clientMessageId,
           });
+        } else {
+          const sent = await socket.sendMessage(resolvedDestinationJid, { text: payload.text });
+          if (!sent?.key.id) throw new Error("WhatsApp no devolvió identificador del mensaje.");
+
+          sentMessageId = sent.key.id;
+          if (sent.message) {
+            await this.messages.save({
+              tenantId: item.tenantId,
+              sessionId,
+              campaignId: item.campaignId,
+              queueItemId: item.id,
+              whatsappMessageId: sentMessageId,
+              remoteJid: resolvedDestinationJid,
+              direction: "OUTBOUND",
+              messageType: getContentType(sent.message) ?? "conversation",
+              status: "SUBMITTED",
+              fromMe: true,
+              payload: Buffer.from(proto.Message.encode(sent.message).finish()),
+              messageTimestamp: new Date(),
+            });
+          }
         }
+      } finally {
+        await socket.sendPresenceUpdate("paused", resolvedDestinationJid).catch(() => {});
       }
 
       await this.attempts.markSubmitted(attempt.id, sentMessageId);

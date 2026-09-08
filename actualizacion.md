@@ -1,11 +1,27 @@
 # Bitácora de Actualizaciones y Correcciones
 
-## Estado Actual: PUBLICADO EN GITHUB (v1.2.2)
+## Estado Actual: PARCHE ANTI-463 APLICADO (LID Routing + Typing Simulation)
 
 ### Fecha: 08/09/2026
 ### Versión UI: `v1.2.2` (en menú lateral de la app)
 ### Rama: `main`
-### Incidencia: Desconexión de sesión de WhatsApp al enviar primer mensaje en campañas masivas
+### Incidencia: Rechazo 463 en mensajes salientes en frío hacia contactos con LID
+
+---
+
+## Novedad: Corrección de Enrutamiento @lid y Simulación de Escritura
+
+1. **Enrutamiento `@lid` Preservado:**
+   * Se eliminó el descarte forzado de `@lid` en `backend/src/worker/message-queue-worker.ts`.
+   * Si WhatsApp reporta que el contacto posee un identificador de privacidad `@lid`, el sistema enruta directamente a ese `@lid` en lugar de forzar `@s.whatsapp.net`, evitando la infracción de privacidad que disparaba el código 463.
+
+2. **Simulación de Escritura Humana (Humanized Typing):**
+   * Tras emitir `"composing"`, el sistema pausa de **1.5 a 3.5 segundos** antes de enviar el mensaje, imitando el tiempo de tipeo humano real en lugar de disparar en 0 milisegundos.
+   * Al finalizar el envío, se emite `"paused"` para restablecer el estado del chat limpiamente.
+
+3. **Huellas de Navegador Depuradas:**
+   * Se eliminaron huellas obsoletas (`Safari`, `macOS Desktop`, `Firefox`) en `proxy-fingerprint.util.ts`.
+   * Se conservan únicamente firmas estándar de alta reputación: **Windows Chrome, Windows Edge, macOS Chrome y Ubuntu Chrome**.
 
 ---
 
