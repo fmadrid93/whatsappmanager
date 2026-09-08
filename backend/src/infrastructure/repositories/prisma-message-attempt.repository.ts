@@ -24,6 +24,54 @@ export class PrismaMessageAttemptRepository implements IMessageAttemptRepository
     reconcileAfter: Date;
   }): Promise<AttemptPreparation> {
     return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.messageAttempt.findUnique({
+        where: {
+          sessionId_clientMessageId: {
+            sessionId: input.sessionId,
+            clientMessageId: input.clientMessageId,
+          },
+        },
+      });
+
+      if (existing) {
+        if (["COMPLETED", "ACKNOWLEDGED", "SUBMITTED"].includes(existing.state) && existing.whatsappMessageId) {
+          return {
+            id: existing.id,
+            decision: "ALREADY_SENT" as const,
+            whatsappMessageId: existing.whatsappMessageId,
+          };
+        }
+        if (["STARTED", "SUBMITTED"].includes(existing.state) && existing.reconcileAfter && existing.reconcileAfter > new Date()) {
+          return {
+            id: existing.id,
+            decision: "WAIT" as const,
+            retryAt: existing.reconcileAfter,
+            whatsappMessageId: existing.whatsappMessageId ?? undefined,
+          };
+        }
+        const updated = await tx.messageAttempt.update({
+          where: { id: existing.id },
+          data: {
+            queueItemId: input.queueItemId,
+            campaignId: input.campaignId,
+            state: "STARTED",
+            startedAt: new Date(),
+            submittedAt: null,
+            acknowledgedAt: null,
+            completedAt: null,
+            failedAt: null,
+            reconcileAfter: input.reconcileAfter,
+            errorCode: null,
+            errorMessage: null,
+            whatsappMessageId: null,
+          },
+        });
+        return {
+          id: updated.id,
+          decision: "SEND" as const,
+        };
+      }
+
       const unresolved = await tx.messageAttempt.findFirst({
         where: {
           queueItemId: input.queueItemId,
