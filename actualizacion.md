@@ -1,8 +1,10 @@
 # Bitácora de Actualizaciones y Correcciones
 
-## Estado Actual: COMPLETADO Y LISTO PARA PUBLICAR
+## Estado Actual: PUBLICADO EN GITHUB (v1.2.2)
 
 ### Fecha: 08/09/2026
+### Versión UI: `v1.2.2` (en menú lateral de la app)
+### Rama: `main`
 ### Incidencia: Desconexión de sesión de WhatsApp al enviar primer mensaje en campañas masivas
 
 ---
