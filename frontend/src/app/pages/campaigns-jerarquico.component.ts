@@ -215,18 +215,42 @@ import {
                   Todas ({{ sessions().length }})
                 </button>
               </div>
-              <p-multiSelect
-                [options]="estadosDisponibles()"
-                [ngModel]="filtroEstadosSesion()"
-                (ngModelChange)="filtroEstadosSesion.set($event)"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="Filtrar por estados (múltiple)..."
-                [showClear]="true"
-                display="chip"
-                [maxSelectedLabels]="1"
-                styleClass="estado-multiselect"
-              />
+              <div class="session-filters-group">
+                <p-multiSelect
+                  [options]="estadosDisponibles()"
+                  [ngModel]="filtroEstadosSesion()"
+                  (ngModelChange)="filtroEstadosSesion.set($event)"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Filtrar por estados..."
+                  [showClear]="true"
+                  display="chip"
+                  [maxSelectedLabels]="1"
+                  styleClass="estado-multiselect"
+                />
+                <p-multiSelect
+                  [options]="municipioOptions()"
+                  [ngModel]="filtroMunicipiosSesion()"
+                  (ngModelChange)="filtroMunicipiosSesion.set($event)"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Filtrar por municipio / territorio..."
+                  [showClear]="true"
+                  display="chip"
+                  [maxSelectedLabels]="1"
+                  filter="true"
+                  filterPlaceHolder="Buscar municipio..."
+                  styleClass="municipio-multiselect"
+                />
+              </div>
+            </div>
+            <div class="session-quick-actions">
+              <span class="muted small">{{ selectedSessionIds().length }} sesión(es) elegida(s) de {{ sesionesDeSeleccionados().length }}</span>
+              <div class="btn-group-mini">
+                <button type="button" class="btn-mini" (click)="seleccionarTodasConectadas()">Conectadas</button>
+                <button type="button" class="btn-mini" (click)="seleccionarTodasVisibles()">Marcar visibles</button>
+                <button type="button" class="btn-mini text-muted" (click)="deseleccionarTodasSesiones()">Limpiar</button>
+              </div>
             </div>
             @if (!mostrarTodasLasSesiones() && haySeleccionJerarquica() && sesionesDeElegidosCount() === 0) {
               <div class="muted small">Ninguno de los elegidos arriba tiene una sesión de WhatsApp propia todavía.</div>
@@ -334,13 +358,26 @@ import {
           <div class="recurring-table-wrap">
             <table class="recurring-table">
               <thead>
-                <tr><th>Nombre</th><th>Frecuencia</th><th>Estado</th><th>Última corrida</th><th>Resultado</th><th>Acciones</th></tr>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Frecuencia</th>
+                  <th>Sesiones</th>
+                  <th>Estado</th>
+                  <th>Última corrida</th>
+                  <th>Resultado</th>
+                  <th>Acciones</th>
+                </tr>
               </thead>
               <tbody>
                 @for (item of recurrentesJerarquia(); track item.id) {
                   <tr>
                     <td><strong>{{ item.name }}</strong></td>
                     <td>{{ intervalLabel(item.intervalMinutes) }}</td>
+                    <td>
+                      <span class="session-pill" [class.connected]="item.sessionIds.length > 0" [title]="getSessionNames(item.sessionIds)">
+                        {{ item.sessionIds.length }} sesión(es)
+                      </span>
+                    </td>
                     <td><span class="status-pill" [class.paused]="item.status === 'PAUSED'">{{ item.status === 'ACTIVE' ? 'Activo' : 'Pausado' }}</span></td>
                     <td>{{ item.lastRunAt ? (item.lastRunAt | date:'short') : 'Todavía no corrió' }}</td>
                     <td>
@@ -354,6 +391,7 @@ import {
                       }
                     </td>
                     <td class="actions">
+                      <p-button type="button" icon="pi pi-pencil" severity="info" size="small" (onClick)="abrirModalEditarRecurrente(item)" title="Editar sesiones y mensaje" />
                       @if (item.status === 'ACTIVE') {
                         <p-button type="button" icon="pi pi-pause" severity="secondary" size="small" [loading]="busyRecurringIds().has(item.id)" (onClick)="pausarRecurrente(item)" title="Pausar" />
                       } @else {
@@ -680,6 +718,118 @@ import {
         </div>
       </div>
     }
+
+    <!-- ========================================== -->
+    <!-- MODAL 3: DIÁLOGO DE EDICIÓN DE CAMPAÑA RECURRENTE -->
+    <!-- ========================================== -->
+    @if (modalEditarRecurrenteVisible()) {
+      <div class="custom-modal-backdrop" (click)="cerrarModalEditarRecurrente()">
+        <div class="custom-modal modal-large" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <div class="modal-title-box">
+              <h2><i class="pi pi-pencil"></i> Editar Envío Recurrente</h2>
+              <span class="muted small">{{ itemRecurrenteSeleccionado()?.name }}</span>
+            </div>
+            <button type="button" class="close-btn" (click)="cerrarModalEditarRecurrente()"><i class="pi pi-times"></i></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="form-grid">
+              <label for="edit-rec-name">Nombre de la campaña</label>
+              <input pInputText id="edit-rec-name" name="editRecName" [(ngModel)]="editRecurrenteName" />
+
+              <label for="edit-rec-interval">Frecuencia de envío automático</label>
+              <select id="edit-rec-interval" name="editRecInterval" [(ngModel)]="editRecurrenteIntervalMinutes">
+                @for (preset of intervalPresets; track preset.minutes) {
+                  <option [value]="preset.minutes">{{ preset.label }}</option>
+                }
+              </select>
+
+              <label>Sesiones emisoras de WhatsApp ({{ editRecurrenteSessionIds().length }} seleccionada(s))</label>
+              <div class="session-toolbar">
+                <div class="session-filters-group">
+                  <p-multiSelect
+                    [options]="estadosDisponibles()"
+                    [ngModel]="editFiltroEstadosSesion()"
+                    (ngModelChange)="editFiltroEstadosSesion.set($event)"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Filtrar por estados..."
+                    [showClear]="true"
+                    display="chip"
+                    [maxSelectedLabels]="1"
+                    styleClass="estado-multiselect"
+                  />
+                  <p-multiSelect
+                    [options]="municipioOptions()"
+                    [ngModel]="editFiltroMunicipiosSesion()"
+                    (ngModelChange)="editFiltroMunicipiosSesion.set($event)"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Filtrar por municipio / territorio..."
+                    [showClear]="true"
+                    display="chip"
+                    [maxSelectedLabels]="1"
+                    filter="true"
+                    filterPlaceHolder="Buscar municipio..."
+                    styleClass="municipio-multiselect"
+                  />
+                </div>
+                <div class="btn-group-mini">
+                  <button type="button" class="btn-mini" (click)="editSeleccionarTodasConectadas()">Conectadas</button>
+                  <button type="button" class="btn-mini" (click)="editSeleccionarTodasVisibles()">Marcar visibles</button>
+                  <button type="button" class="btn-mini text-muted" (click)="editDeseleccionarTodasSesiones()">Limpiar</button>
+                </div>
+              </div>
+
+              <div class="session-options edit-session-options">
+                @for (session of editSesionesFiltradas(); track session.id) {
+                  <label class="check-row">
+                    <input type="checkbox" [checked]="editRecurrenteSessionIds().includes(session.id)" (change)="toggleEditSession(session.id)" />
+                    <span class="session-name">{{ session.name }}</span>
+                    <span class="session-pill" [class.connected]="session.status === 'CONNECTED'">{{ session.phoneE164 || sessionStatusLabel(session.status) }}</span>
+                  </label>
+                } @empty {
+                  <div class="muted">No hay sesiones para este filtro.</div>
+                }
+              </div>
+
+              <label for="edit-rec-message">Mensaje</label>
+              <textarea id="edit-rec-message" name="editRecMessage" rows="4" [(ngModel)]="editRecurrenteMessageText"></textarea>
+              <div class="contact-help">Variables disponibles: {{ '{{nombre}}' }}, {{ '{{nombre_votante}}' }}.</div>
+
+              <label for="edit-rec-media">Multimedia (opcional)</label>
+              <select id="edit-rec-media" name="editRecMedia" [(ngModel)]="editRecurrenteMediaAssetId">
+                <option value="">Sin multimedia</option>
+                @for (item of mediaItems(); track item.id) {
+                  <option [value]="item.id">{{ item.fileName }}</option>
+                }
+              </select>
+
+              <label for="edit-rec-region">País / región por defecto</label>
+              <select id="edit-rec-region" name="editRecRegion" [(ngModel)]="editRecurrenteDefaultRegion">
+                @for (region of regionOptions; track region.code) {
+                  <option [value]="region.code">{{ region.label }}</option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <p-button type="button" label="Cancelar" severity="secondary" (onClick)="cerrarModalEditarRecurrente()" />
+            <p-button
+              type="button"
+              label="Guardar cambios"
+              icon="pi pi-check"
+              severity="primary"
+              [loading]="savingEditRecurring()"
+              [disabled]="!editRecurrenteName.trim() || editRecurrenteSessionIds().length === 0"
+              (onClick)="guardarEdicionRecurrente()"
+            />
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: [`
     .page-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1.2rem}
@@ -730,8 +880,16 @@ import {
     /* SESSIONS */
     .session-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.4rem}
     .session-toggle{display:flex;gap:.35rem;flex-wrap:wrap}
-    .estado-multiselect{min-width:210px}
+    .session-filters-group{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+    .session-quick-actions{display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;flex-wrap:wrap;gap:.4rem}
+    .btn-group-mini{display:flex;gap:.3rem}
+    .btn-mini{background:#e2e8f0;border:none;border-radius:6px;padding:.2rem .5rem;font-size:.72rem;font-weight:600;color:#334155;cursor:pointer;transition:all .15s ease}
+    .btn-mini:hover{background:#cbd5e1;color:#0f172a}
+    .btn-mini.text-muted{background:none;border:1px solid #e2e8f0}
+    .estado-multiselect{min-width:190px}
+    .municipio-multiselect{min-width:210px}
     .session-options{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:.3rem;border:1px solid #e2e8f0;padding:.5rem;border-radius:8px;background:#f8fafc}
+    .edit-session-options{max-height:180px}
     .session-name{font-weight:600;color:#1e293b}
     .session-pill{font-size:.72rem;padding:.15rem .45rem;border-radius:999px;background:#e2e8f0;color:#475569}
     .session-pill.connected{background:#dcfce7;color:#15803d;font-weight:700}
@@ -775,7 +933,7 @@ import {
     .close-btn{background:none;border:none;font-size:1.2rem;color:#64748b;cursor:pointer;padding:.4rem;border-radius:6px;transition:all .15s}
     .close-btn:hover{background:#e2e8f0;color:#0f172a}
     .modal-body{padding:1.2rem 1.4rem;overflow-y:auto;display:flex;flex-direction:column;gap:1rem;flex:1}
-    .modal-footer{padding:.8rem 1.4rem;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end}
+    .modal-footer{padding:.8rem 1.4rem;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:.5rem}
     .modal-table-scroll{max-height:380px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;background:#fff}
 
     /* MODAL 1 LIST */
@@ -941,6 +1099,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
     this.mostrarTodasLasSesiones() || !this.haySeleccionJerarquica() ? this.sessions() : this.coincidenciasSesionesElegidos());
 
   readonly filtroEstadosSesion = signal<string[]>([]);
+  readonly filtroMunicipiosSesion = signal<string[]>([]);
 
   readonly estadosDisponibles = computed<{ value: string; label: string }[]>(() => {
     const raw = [...new Set(this.sesionesBase().map((s) => s.status))];
@@ -955,10 +1114,63 @@ export class CampaignsJerarquicoComponent implements OnInit {
     }));
   });
 
+  readonly municipioOptions = computed(() => {
+    const nombres = new Set<string>();
+
+    const terrs = this.jerarquia()?.territorios ?? [];
+    for (const t of terrs) {
+      if (t.nombre && t.nombre.trim()) {
+        nombres.add(t.nombre.trim().toUpperCase());
+      }
+    }
+
+    for (const s of this.sessions()) {
+      const parts = s.name.split(/[_·-]/);
+      if (parts.length > 1 && parts[0].trim().length >= 3) {
+        const candidate = parts[0].trim();
+        if (!/^u\d+$/i.test(candidate) && !/^\d+$/.test(candidate)) {
+          nombres.add(candidate.toUpperCase());
+        }
+      }
+    }
+
+    return Array.from(nombres)
+      .sort((a, b) => a.localeCompare(b))
+      .map((nombre) => ({
+        value: nombre,
+        label: nombre,
+      }));
+  });
+
   readonly sesionesDeSeleccionados = computed<SessionRecord[]>(() => {
     const base = this.sesionesBase();
     const estados = this.filtroEstadosSesion();
-    return estados.length > 0 ? base.filter((s) => estados.includes(s.status)) : base;
+    const municipios = this.filtroMunicipiosSesion();
+    return base.filter((session) => {
+      if (estados.length > 0 && !estados.includes(session.status)) {
+        return false;
+      }
+      if (municipios.length > 0) {
+        const nameUpper = session.name.toUpperCase();
+        const coincide = municipios.some((m) => {
+          const mUpper = m.toUpperCase();
+          if (nameUpper.includes(mUpper)) return true;
+          const userMatch = session.name.match(/^u(\d+)/i);
+          if (userMatch && this.jerarquia()) {
+            const uid = parseInt(userMatch[1], 10);
+            const user = [
+              ...(this.jerarquia()?.administradores ?? []),
+              ...(this.jerarquia()?.gerentes ?? []),
+              ...(this.jerarquia()?.movilizadores ?? []),
+            ].find((u) => u.idUsuario === uid);
+            if (user?.territorio && user.territorio.toUpperCase().includes(mUpper)) return true;
+          }
+          return false;
+        });
+        if (!coincide) return false;
+      }
+      return true;
+    });
   });
 
   readonly mediaItems = signal<MediaRecord[]>([]);
@@ -1018,6 +1230,50 @@ export class CampaignsJerarquicoComponent implements OnInit {
   readonly loadingDetalleCampania = signal(false);
   readonly mensajesCampania = signal<CampaignMessageRecord[]>([]);
   filtroMensajesCampania = "";
+
+  /* MODAL 3: EDICIÓN DE CAMPAÑA RECURRENTE */
+  readonly modalEditarRecurrenteVisible = signal(false);
+  readonly itemRecurrenteSeleccionado = signal<RecurringCampaignRecord | null>(null);
+  readonly savingEditRecurring = signal(false);
+  editRecurrenteName = "";
+  editRecurrenteIntervalMinutes = 1440;
+  editRecurrenteMessageText = "";
+  editRecurrenteMediaAssetId = "";
+  editRecurrenteDefaultRegion = "BO";
+  readonly editRecurrenteSessionIds = signal<string[]>([]);
+  readonly editFiltroEstadosSesion = signal<string[]>([]);
+  readonly editFiltroMunicipiosSesion = signal<string[]>([]);
+
+  readonly editSesionesFiltradas = computed<SessionRecord[]>(() => {
+    const items = this.sessions();
+    const estados = this.editFiltroEstadosSesion();
+    const municipios = this.editFiltroMunicipiosSesion();
+    return items.filter((session) => {
+      if (estados.length > 0 && !estados.includes(session.status)) {
+        return false;
+      }
+      if (municipios.length > 0) {
+        const nameUpper = session.name.toUpperCase();
+        const coincide = municipios.some((m) => {
+          const mUpper = m.toUpperCase();
+          if (nameUpper.includes(mUpper)) return true;
+          const userMatch = session.name.match(/^u(\d+)/i);
+          if (userMatch && this.jerarquia()) {
+            const uid = parseInt(userMatch[1], 10);
+            const user = [
+              ...(this.jerarquia()?.administradores ?? []),
+              ...(this.jerarquia()?.gerentes ?? []),
+              ...(this.jerarquia()?.movilizadores ?? []),
+            ].find((u) => u.idUsuario === uid);
+            if (user?.territorio && user.territorio.toUpperCase().includes(mUpper)) return true;
+          }
+          return false;
+        });
+        if (!coincide) return false;
+      }
+      return true;
+    });
+  });
 
   readonly mensajesEnProcesoCount = computed(() =>
     this.mensajesCampania().filter((m) => m.status === "PROCESSING" || m.status === "SUBMITTED").length);
@@ -1468,6 +1724,105 @@ export class CampaignsJerarquicoComponent implements OnInit {
       error: (error: { error?: { message?: string } }) => {
         this.savingRecurring.set(false);
         this.messages.add({ severity: "error", summary: "No se pudo guardar el envío recurrente", detail: error.error?.message });
+      },
+    });
+  }
+
+  seleccionarTodasConectadas(): void {
+    const conectadas = this.sesionesDeSeleccionados().filter((s) => s.status === "CONNECTED").map((s) => s.id);
+    const set = new Set([...this.selectedSessionIds(), ...conectadas]);
+    this.selectedSessionIds.set(Array.from(set));
+  }
+
+  seleccionarTodasVisibles(): void {
+    const visibles = this.sesionesDeSeleccionados().map((s) => s.id);
+    const set = new Set([...this.selectedSessionIds(), ...visibles]);
+    this.selectedSessionIds.set(Array.from(set));
+  }
+
+  deseleccionarTodasSesiones(): void {
+    this.selectedSessionIds.set([]);
+  }
+
+  editSeleccionarTodasConectadas(): void {
+    const conectadas = this.editSesionesFiltradas().filter((s) => s.status === "CONNECTED").map((s) => s.id);
+    const set = new Set([...this.editRecurrenteSessionIds(), ...conectadas]);
+    this.editRecurrenteSessionIds.set(Array.from(set));
+  }
+
+  editSeleccionarTodasVisibles(): void {
+    const visibles = this.editSesionesFiltradas().map((s) => s.id);
+    const set = new Set([...this.editRecurrenteSessionIds(), ...visibles]);
+    this.editRecurrenteSessionIds.set(Array.from(set));
+  }
+
+  editDeseleccionarTodasSesiones(): void {
+    this.editRecurrenteSessionIds.set([]);
+  }
+
+  toggleEditSession(id: string): void {
+    const current = this.editRecurrenteSessionIds();
+    this.editRecurrenteSessionIds.set(current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  getSessionNames(sessionIds: string[]): string {
+    if (!sessionIds || sessionIds.length === 0) return "Sin sesiones";
+    const found = sessionIds.map((id) => {
+      const s = this.sessions().find((x) => x.id === id);
+      return s ? s.name : id;
+    });
+    return found.join(", ");
+  }
+
+  abrirModalEditarRecurrente(item: RecurringCampaignRecord): void {
+    this.itemRecurrenteSeleccionado.set(item);
+    this.editRecurrenteName = item.name;
+    this.editRecurrenteIntervalMinutes = item.intervalMinutes;
+    this.editRecurrenteMessageText = item.message?.text || "";
+    this.editRecurrenteMediaAssetId = item.mediaAssetId || "";
+    this.editRecurrenteDefaultRegion = item.defaultRegion || "BO";
+    this.editRecurrenteSessionIds.set([...(item.sessionIds || [])]);
+    this.editFiltroEstadosSesion.set([]);
+    this.editFiltroMunicipiosSesion.set([]);
+    this.modalEditarRecurrenteVisible.set(true);
+  }
+
+  cerrarModalEditarRecurrente(): void {
+    this.modalEditarRecurrenteVisible.set(false);
+    this.itemRecurrenteSeleccionado.set(null);
+  }
+
+  guardarEdicionRecurrente(): void {
+    const item = this.itemRecurrenteSeleccionado();
+    if (!item) return;
+
+    if (!this.editRecurrenteName.trim()) {
+      this.messages.add({ severity: "warn", summary: "Ingresa un nombre" });
+      return;
+    }
+    if (this.editRecurrenteSessionIds().length === 0) {
+      this.messages.add({ severity: "warn", summary: "Selecciona al menos una sesión emisora" });
+      return;
+    }
+
+    this.savingEditRecurring.set(true);
+    this.api.updateRecurringCampaign(item.id, {
+      name: this.editRecurrenteName.trim(),
+      intervalMinutes: this.editRecurrenteIntervalMinutes,
+      sessionIds: this.editRecurrenteSessionIds(),
+      message: { text: this.editRecurrenteMessageText },
+      mediaAssetId: this.editRecurrenteMediaAssetId || undefined,
+      defaultRegion: this.editRecurrenteDefaultRegion.toUpperCase(),
+    }).subscribe({
+      next: () => {
+        this.savingEditRecurring.set(false);
+        this.cerrarModalEditarRecurrente();
+        this.messages.add({ severity: "success", summary: "Envío recurrente actualizado con éxito" });
+        this.loadRecurrentes();
+      },
+      error: (error: { error?: { message?: string } }) => {
+        this.savingEditRecurring.set(false);
+        this.messages.add({ severity: "error", summary: "No se pudo actualizar", detail: error.error?.message });
       },
     });
   }

@@ -424,6 +424,11 @@ export class BaileysSessionGateway implements ISessionGateway {
               clearPairingCode: true,
             });
             await this.sessions.releaseLease(sessionId, this.workerId);
+          } else if (restartRequired) {
+            // ¡CRÍTICO! StatusCode 515 (restartRequired) ocurre cuando el usuario escanea el QR o durante la reconexión de Baileys.
+            // DEBE reiniciarse inmediatamente para completar el handshake y finalizar el emparejamiento.
+            logger.info({ sessionId, statusCode }, "Reinicio requerido por Baileys (515/restartRequired); reanudando socket para completar conexión...");
+            this.scheduleRestartRequired(sessionId);
           } else if (!intentionallyStopped) {
             const isUnauthenticated = !currentSession?.phoneE164 && !currentSession?.whatsappJid;
             if (isUnauthenticated) {

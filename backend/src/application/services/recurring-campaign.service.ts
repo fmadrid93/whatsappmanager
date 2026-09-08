@@ -107,6 +107,45 @@ export class RecurringCampaignService {
     return this.repository.listByTenant(tenantId);
   }
 
+  async update(
+    tenantId: string,
+    id: string,
+    input: {
+      name?: string;
+      sessionIds?: string[];
+      intervalMinutes?: number;
+      message?: CampaignMessagePayload;
+      mediaAssetId?: string;
+      defaultRegion?: string;
+      jerarquiaSelection?: RecurringCampaignJerarquiaSelection;
+      connectorVariables?: Record<string, string>;
+    },
+  ): Promise<RecurringCampaignRecord> {
+    const existing = await this.repository.findByIdForTenant(id, tenantId);
+    if (!existing) throw new HttpError(404, "Envío recurrente no encontrado.");
+
+    if (input.name !== undefined && !input.name.trim()) {
+      throw new HttpError(400, "El nombre no puede estar vacío.");
+    }
+    if (input.sessionIds !== undefined && input.sessionIds.length === 0) {
+      throw new HttpError(400, "Debes seleccionar al menos una sesión emisora.");
+    }
+    if (input.intervalMinutes !== undefined && input.intervalMinutes < MIN_INTERVAL_MINUTES) {
+      throw new HttpError(400, `El intervalo mínimo es de ${MIN_INTERVAL_MINUTES} minutos.`);
+    }
+
+    return this.repository.update(id, tenantId, {
+      name: input.name?.trim(),
+      sessionIds: input.sessionIds ? [...new Set(input.sessionIds)] : undefined,
+      intervalMinutes: input.intervalMinutes ? Math.round(input.intervalMinutes) : undefined,
+      message: input.message,
+      mediaAssetId: input.mediaAssetId,
+      defaultRegion: input.defaultRegion,
+      jerarquiaSelection: input.jerarquiaSelection,
+      connectorVariables: input.connectorVariables,
+    });
+  }
+
   async pause(tenantId: string, id: string): Promise<void> {
     const record = await this.repository.findByIdForTenant(id, tenantId);
     if (!record) throw new HttpError(404, "Envío recurrente no encontrado.");

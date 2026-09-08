@@ -59,22 +59,23 @@ export function buildProxyAgent(
   }
 }
 
-const FINGERPRINT_PLATFORMS: Array<(browser: string) => [string, string, string]> = [
-  Browsers.macOS,
-  Browsers.windows,
-  Browsers.ubuntu,
+const VALID_BROWSER_FINGERPRINTS: Array<[string, string, string]> = [
+  Browsers.macOS("Chrome"),
+  Browsers.macOS("Safari"),
+  Browsers.macOS("Desktop"),
+  Browsers.windows("Chrome"),
+  Browsers.windows("Edge"),
+  Browsers.windows("Firefox"),
+  Browsers.ubuntu("Chrome"),
+  Browsers.ubuntu("Firefox"),
 ];
-const FINGERPRINT_BROWSER_NAMES = ["Chrome", "Firefox", "Edge", "Safari"];
 
 /**
- * Elige una "huella" de dispositivo (SO + navegador) estable por sesión,
- * pero variada entre sesiones distintas. Miles de sesiones anunciándose
- * todas como el mismo "Mac OS / Chrome" es, en sí mismo, una señal de bot
- * tan fuerte como compartir IP — hay que diversificar esto también.
+ * Elige una "huella" de dispositivo (SO + navegador) válida y realista por sesión.
+ * Evita combinaciones imposibles (como Safari en Linux o Windows) que WhatsApp rechaza.
  */
 export function pickBrowserFingerprint(sessionId: string): [string, string, string] {
   const hash = stableHash(sessionId);
-  const platformPick = FINGERPRINT_PLATFORMS[hash.readUInt8(0) % FINGERPRINT_PLATFORMS.length] ?? Browsers.macOS;
-  const browserName = FINGERPRINT_BROWSER_NAMES[hash.readUInt8(1) % FINGERPRINT_BROWSER_NAMES.length] ?? "Chrome";
-  return platformPick(browserName);
+  const index = hash.readUInt8(0) % VALID_BROWSER_FINGERPRINTS.length;
+  return VALID_BROWSER_FINGERPRINTS[index] ?? Browsers.macOS("Chrome");
 }

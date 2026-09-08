@@ -15,6 +15,11 @@ export interface SessionRecord {
   qrUpdatedAt?: string;
   lastConnectionCode?: number;
   lastConnectionError?: string;
+  lastConnectionAt?: string;
+  connectedAt?: string;
+  disconnectedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CampaignContactValidationResult {
@@ -702,6 +707,18 @@ export class ApiService {
     | { sourceType: "JERARQUIA"; jerarquiaSelection: Voto1x10SeleccionInput }
   )) {
     return this.http.post<RecurringCampaignRecord>("/api/recurring-campaigns", body);
+  }
+  updateRecurringCampaign(id: string, body: {
+    name?: string;
+    sessionIds?: string[];
+    message?: { text: string; caption?: string };
+    mediaAssetId?: string | null;
+    defaultRegion?: string;
+    intervalMinutes?: number;
+    jerarquiaSelection?: Voto1x10SeleccionInput;
+    connectorVariables?: Record<string, string>;
+  }) {
+    return this.http.put<RecurringCampaignRecord>(`/api/recurring-campaigns/${id}`, body);
   }
   pauseRecurringCampaign(id: string) { return this.http.post<void>(`/api/recurring-campaigns/${id}/pause`, {}); }
   resumeRecurringCampaign(id: string) { return this.http.post<void>(`/api/recurring-campaigns/${id}/resume`, {}); }

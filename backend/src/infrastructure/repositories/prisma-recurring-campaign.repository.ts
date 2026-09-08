@@ -61,6 +61,24 @@ export class PrismaRecurringCampaignRepository implements IRecurringCampaignRepo
     return mapRow(row);
   }
 
+  async update(id: string, tenantId: string, input: Partial<CreateRecurringCampaignInput>): Promise<RecurringCampaignRecord> {
+    const data: Record<string, unknown> = {};
+    if (input.name !== undefined) data["name"] = input.name;
+    if (input.sessionIds !== undefined) data["sessionIdsPayload"] = encodeJson(input.sessionIds);
+    if (input.message !== undefined) data["messagePayload"] = encodeJson(input.message);
+    if (input.mediaAssetId !== undefined) data["mediaAssetId"] = input.mediaAssetId;
+    if (input.defaultRegion !== undefined) data["defaultRegion"] = input.defaultRegion;
+    if (input.intervalMinutes !== undefined) data["intervalMinutes"] = input.intervalMinutes;
+    if (input.jerarquiaSelection !== undefined) data["jerarquiaSelectionPayload"] = encodeJson(input.jerarquiaSelection);
+    if (input.connectorVariables !== undefined) data["connectorVariablesPayload"] = encodeJson(input.connectorVariables);
+
+    const row = await this.prisma.recurringCampaign.update({
+      where: { id },
+      data,
+    });
+    return mapRow(row);
+  }
+
   async listByTenant(tenantId: string): Promise<RecurringCampaignRecord[]> {
     const rows = await this.prisma.recurringCampaign.findMany({
       where: { tenantId },

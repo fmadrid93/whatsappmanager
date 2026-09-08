@@ -31,6 +31,10 @@ function mapSession(row: WhatsAppSession): SessionRecord {
     leaseOwner: row.leaseOwner ?? undefined,
     leaseExpiresAt: row.leaseExpiresAt ?? undefined,
     lastHeartbeatAt: row.lastHeartbeatAt ?? undefined,
+    connectedAt: row.connectedAt ?? undefined,
+    disconnectedAt: row.disconnectedAt ?? undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
     shardKey: row.shardKey,
   };
 }

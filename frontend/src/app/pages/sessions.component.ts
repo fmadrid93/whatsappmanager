@@ -1,4 +1,5 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from "@angular/core";
+import { DatePipe } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ButtonModule } from "primeng/button";
 import { CardModule } from "primeng/card";
@@ -6,11 +7,11 @@ import { InputTextModule } from "primeng/inputtext";
 import { MultiSelectModule } from "primeng/multiselect";
 import { TableModule } from "primeng/table";
 import { MessageService } from "primeng/api";
-import { ApiService, type SessionRecord } from "../core/api.service";
+import { ApiService, type SessionRecord, type Voto1x10Jerarquia } from "../core/api.service";
 
 @Component({
   standalone: true,
-  imports: [FormsModule, ButtonModule, CardModule, InputTextModule, TableModule, MultiSelectModule],
+  imports: [DatePipe, FormsModule, ButtonModule, CardModule, InputTextModule, TableModule, MultiSelectModule],
   template: `
     <main class="page">
       <div class="page-header">
@@ -125,6 +126,23 @@ import { ApiService, type SessionRecord } from "../core/api.service";
                 />
               </div>
 
+              <div class="multiselect-box">
+                <p-multiSelect
+                  [options]="municipioOptions()"
+                  [ngModel]="filtroMunicipios()"
+                  (ngModelChange)="filtroMunicipios.set($event)"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Filtrar por municipio / territorio"
+                  [showClear]="true"
+                  display="chip"
+                  [maxSelectedLabels]="1"
+                  filter="true"
+                  filterPlaceHolder="Buscar municipio..."
+                  styleClass="status-multiselect"
+                />
+              </div>
+
               <div class="quick-filters">
                 <button
                   type="button"
@@ -147,7 +165,7 @@ import { ApiService, type SessionRecord } from "../core/api.service";
           </div>
         </ng-template>
 
-        <p-table [value]="sesionesFiltradas()" [tableStyle]="{ 'min-width': '1050px' }">
+        <p-table [value]="sesionesFiltradas()" [tableStyle]="{ 'min-width': '1120px' }">
           <ng-template #header>
             <tr>
               <th>Nombre</th>
@@ -155,6 +173,7 @@ import { ApiService, type SessionRecord } from "../core/api.service";
               <th>Número conectado</th>
               <th>Método</th>
               <th>Estado</th>
+              <th>Hora / Registro</th>
               <th>Bot</th>
               <th>Acciones</th>
             </tr>
@@ -185,6 +204,17 @@ import { ApiService, type SessionRecord } from "../core/api.service";
                   <div class="muted">{{ session.lastConnectionError }}</div>
                 }
               </td>
+              <td>
+                <div class="session-time-col">
+                  <strong>{{ session.createdAt ? (session.createdAt | date:'HH:mm:ss') : '—' }}</strong>
+                  <span class="muted small">{{ session.createdAt ? (session.createdAt | date:'dd/MM/yyyy') : '' }}</span>
+                  @if (session.connectedAt && session.status === 'CONNECTED') {
+                    <span class="text-success small" title="Hora de conexión">⚡ Conectó: {{ session.connectedAt | date:'HH:mm' }}</span>
+                  } @else if (session.disconnectedAt && session.status !== 'CONNECTED' && session.status !== 'NEW') {
+                    <span class="text-danger small" title="Hora de desconexión">🔌 Desconectó: {{ session.disconnectedAt | date:'HH:mm' }}</span>
+                  }
+                </div>
+              </td>
               <td>{{ session.isBotActive ? 'Activo' : 'Pausado' }}</td>
               <td>
                 <div class="actions">
@@ -213,7 +243,7 @@ import { ApiService, type SessionRecord } from "../core/api.service";
           </ng-template>
           <ng-template #emptymessage>
             <tr>
-              <td colspan="7" class="text-center p-4 muted">
+              <td colspan="8" class="text-center p-4 muted">
                 No hay sesiones que coincidan con los filtros seleccionados.
               </td>
             </tr>
@@ -280,24 +310,23 @@ import { ApiService, type SessionRecord } from "../core/api.service";
       gap: 0.35rem;
     }
     .quick-filter-btn {
-      padding: 0.4rem 0.75rem;
-      font-size: 0.8rem;
-      font-weight: 600;
       border: 1px solid #cbd5e1;
-      border-radius: 999px;
       background: #f8fafc;
-      color: #475569;
+      padding: 0.45rem 0.85rem;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #334155;
       cursor: pointer;
       transition: all 0.15s ease;
     }
     .quick-filter-btn:hover {
-      background: #f1f5f9;
-      border-color: #94a3b8;
+      background: #e2e8f0;
     }
     .quick-filter-btn.active {
-      background: #0284c7;
-      border-color: #0284c7;
+      background: #0f172a;
       color: #ffffff;
+      border-color: #0f172a;
     }
 
     .mode-pill { padding: .35rem .65rem; border-radius: 999px; background: #fff3cd; font-weight: 700; }
@@ -311,6 +340,9 @@ import { ApiService, type SessionRecord } from "../core/api.service";
     .status-pill.quarantine { background: #fee2e2; color: #991b1b; }
     .quarantine-note { color: #991b1b; font-size: .76rem; max-width: 210px; margin-top: .2rem; }
     .actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+    .session-time-col { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.85rem; }
+    .text-success { color: #15803d; }
+    .text-danger { color: #dc2626; }
     select { width: 100%; padding: .65rem; border: 1px solid #cbd5e1; border-radius: .4rem; background: white; }
   `],
 })
@@ -327,7 +359,9 @@ export class SessionsComponent implements OnInit, OnDestroy {
   readonly gatewayMode = signal("");
 
   readonly filtroEstados = signal<string[]>([]);
+  readonly filtroMunicipios = signal<string[]>([]);
   readonly filtroBusqueda = signal<string>("");
+  readonly jerarquia = signal<Voto1x10Jerarquia | null>(null);
 
   readonly conectadasCount = computed(() => this.sessions().filter((s) => s.status === "CONNECTED").length);
 
@@ -350,14 +384,62 @@ export class SessionsComponent implements OnInit, OnDestroy {
     }));
   });
 
+  readonly municipioOptions = computed(() => {
+    const nombres = new Set<string>();
+
+    const terrs = this.jerarquia()?.territorios ?? [];
+    for (const t of terrs) {
+      if (t.nombre && t.nombre.trim()) {
+        nombres.add(t.nombre.trim().toUpperCase());
+      }
+    }
+
+    for (const s of this.sessions()) {
+      const parts = s.name.split(/[_·-]/);
+      if (parts.length > 1 && parts[0].trim().length >= 3) {
+        const candidate = parts[0].trim();
+        if (!/^u\d+$/i.test(candidate) && !/^\d+$/.test(candidate)) {
+          nombres.add(candidate.toUpperCase());
+        }
+      }
+    }
+
+    return Array.from(nombres)
+      .sort((a, b) => a.localeCompare(b))
+      .map((nombre) => ({
+        value: nombre,
+        label: nombre,
+      }));
+  });
+
   readonly sesionesFiltradas = computed(() => {
     const items = this.sessions();
     const estados = this.filtroEstados();
+    const municipios = this.filtroMunicipios();
     const busqueda = this.filtroBusqueda().trim().toLowerCase();
 
     return items.filter((session) => {
       if (estados.length > 0 && !estados.includes(session.status)) {
         return false;
+      }
+      if (municipios.length > 0) {
+        const nameUpper = session.name.toUpperCase();
+        const coincide = municipios.some((m) => {
+          const mUpper = m.toUpperCase();
+          if (nameUpper.includes(mUpper)) return true;
+          const userMatch = session.name.match(/^u(\d+)/i);
+          if (userMatch && this.jerarquia()) {
+            const uid = parseInt(userMatch[1], 10);
+            const user = [
+              ...(this.jerarquia()?.administradores ?? []),
+              ...(this.jerarquia()?.gerentes ?? []),
+              ...(this.jerarquia()?.movilizadores ?? []),
+            ].find((u) => u.idUsuario === uid);
+            if (user?.territorio && user.territorio.toUpperCase().includes(mUpper)) return true;
+          }
+          return false;
+        });
+        if (!coincide) return false;
       }
       if (busqueda) {
         const name = session.name.toLowerCase();
@@ -389,6 +471,10 @@ export class SessionsComponent implements OnInit, OnDestroy {
 
   load(): void {
     this.api.sessions().subscribe((items) => this.sessions.set(items));
+    this.api.voto1x10Jerarquia().subscribe({
+      next: (j) => this.jerarquia.set(j),
+      error: () => {},
+    });
   }
 
   create(): void {

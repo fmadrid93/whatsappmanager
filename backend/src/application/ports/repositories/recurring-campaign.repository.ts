@@ -65,6 +65,7 @@ export interface RecordRunResultInput {
 
 export interface IRecurringCampaignRepository {
   create(input: CreateRecurringCampaignInput): Promise<RecurringCampaignRecord>;
+  update(id: string, tenantId: string, input: Partial<CreateRecurringCampaignInput>): Promise<RecurringCampaignRecord>;
   listByTenant(tenantId: string): Promise<RecurringCampaignRecord[]>;
   findByIdForTenant(id: string, tenantId: string): Promise<RecurringCampaignRecord | null>;
   setStatus(id: string, tenantId: string, status: "ACTIVE" | "PAUSED"): Promise<void>;

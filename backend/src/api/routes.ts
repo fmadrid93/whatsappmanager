@@ -65,6 +65,17 @@ const recurringCampaignCreateSchema = z.discriminatedUnion("sourceType", [
   }),
 ]);
 
+const recurringCampaignUpdateSchema = z.object({
+  name: z.string().min(2).max(150).optional(),
+  sessionIds: z.array(z.string().uuid()).min(1).optional(),
+  message: z.object({ text: z.string().max(4096), caption: z.string().max(1024).optional() }).optional(),
+  mediaAssetId: z.string().uuid().nullable().optional(),
+  defaultRegion: z.string().length(2).optional(),
+  intervalMinutes: z.coerce.number().int().min(5).max(10080).optional(),
+  jerarquiaSelection: jerarquiaSeleccionSchema.optional(),
+  connectorVariables: z.record(z.string(), z.string().max(2000)).optional(),
+});
+
 const botFlowStepSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string().default(() => crypto.randomUUID()), type: z.literal("MESSAGE"), text: z.string().min(1).max(4096) }),
   z.object({ id: z.string().default(() => crypto.randomUUID()), type: z.literal("QUESTION"), text: z.string().min(1).max(4096), variable: z.string().min(1).max(50) }),
@@ -1652,6 +1663,26 @@ export function createRoutes(container: AppContainer): Router {
       });
       await audit(request, "RECURRING_CAMPAIGN_CREATED", "RecurringCampaign", created.id, { name: created.name });
       response.status(201).json(created);
+    }),
+  );
+
+  router.put(
+    "/recurring-campaigns/:id",
+    auth,
+    requirePermission(permissions.CAMPAIGN_MANAGE),
+    asyncHandler(async (request, response) => {
+      const id = requireRouteParam(request, "id");
+      const parsed = recurringCampaignUpdateSchema.parse(request.body);
+      const updated = await container.services.recurringCampaignService.update(
+        request.auth!.tenantId,
+        id,
+        {
+          ...parsed,
+          mediaAssetId: parsed.mediaAssetId === null ? undefined : parsed.mediaAssetId,
+        },
+      );
+      await audit(request, "RECURRING_CAMPAIGN_UPDATED", "RecurringCampaign", id, { name: updated.name });
+      response.json(updated);
     }),
   );
 

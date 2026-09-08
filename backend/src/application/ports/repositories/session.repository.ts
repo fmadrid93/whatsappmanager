@@ -22,6 +22,10 @@ export interface SessionRecord {
   leaseOwner?: string;
   leaseExpiresAt?: Date;
   lastHeartbeatAt?: Date;
+  connectedAt?: Date;
+  disconnectedAt?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
   shardKey: number;
 }
 
