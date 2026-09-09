@@ -16,6 +16,7 @@ import { classifySendFailure } from "../domain/queue/send-error-classifier.js";
 import { FailoverService } from "../application/services/failover.service.js";
 import { IntegrationManagementService } from "../application/services/integration-management.service.js";
 import { buildDispatchPlan } from "../domain/queue/dispatch-plan.js";
+import type { Voto1x10DbRepository } from "../infrastructure/voto1x10/voto1x10-db.repository.js";
 
 export class MessageQueueWorker {
   private timer?: NodeJS.Timeout;
@@ -49,6 +50,7 @@ export class MessageQueueWorker {
     private readonly reconciliationGraceMs: number,
     private readonly circuitBreakerFailureThreshold: number,
     private readonly circuitBreakerRetryMinutes: number,
+    private readonly voto1x10?: Voto1x10DbRepository | null,
   ) {}
 
   getRuntimeSnapshot(): {
@@ -210,6 +212,12 @@ export class MessageQueueWorker {
 
       if (attempt.decision === "ALREADY_SENT" && attempt.whatsappMessageId) {
         await this.queue.markSent(item.id, attempt.whatsappMessageId);
+        if (this.voto1x10) {
+          const phoneToMark = item.recipientE164 || item.recipientRaw;
+          if (phoneToMark) {
+            void this.voto1x10.marcarComoConsultadosPorCelulares([phoneToMark]).catch(() => {});
+          }
+        }
         await this.capacity.recordMessageSent({ tenantId: item.tenantId, queueItemId: item.id });
         await this.campaigns.refreshStats(item.campaignId);
         this.consecutiveTransientFailures.set(sessionId, 0);
@@ -322,6 +330,12 @@ export class MessageQueueWorker {
 
       await this.attempts.markSubmitted(attempt.id, sentMessageId);
       await this.queue.markSent(item.id, sentMessageId);
+      if (this.voto1x10) {
+        const phoneToMark = item.recipientE164 || item.recipientRaw;
+        if (phoneToMark) {
+          void this.voto1x10.marcarComoConsultadosPorCelulares([phoneToMark]).catch(() => {});
+        }
+      }
       await this.attempts.markCompleted(attempt.id, sentMessageId);
       await this.capacity.recordMessageSent({ tenantId: item.tenantId, queueItemId: item.id });
       void this.campaigns.incrementSent(item.campaignId);

@@ -1,4 +1,4 @@
-﻿import { buildContainer } from "../container.js";
+import { buildContainer } from "../container.js";
 import { connectDatabase, disconnectDatabase } from "../infrastructure/database/prisma.js";
 import { SessionSupervisor } from "./session-supervisor.js";
 import { CampaignPreparationWorker } from "./campaign-preparation-worker.js";
@@ -72,6 +72,7 @@ const queueWorker = new MessageQueueWorker(
   container.env.MESSAGE_RECONCILIATION_GRACE_MS,
   container.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
   container.env.CIRCUIT_BREAKER_RETRY_MINUTES,
+  container.repositories.voto1x10DbRepository,
 );
 
 const reconciliationWorker = new MessageReconciliationWorker(
