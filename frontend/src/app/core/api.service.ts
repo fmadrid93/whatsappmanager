@@ -102,6 +102,7 @@ export interface Voto1x10Usuario {
   usuario?: string;
   nombreCompleto: string;
   totalPersonas: number;
+  enviaMensajesMasivos?: boolean;
 }
 
 export interface Voto1x10Jerarquia {

@@ -94,7 +94,13 @@ export class Voto1x10HierarchyService {
 
   async getContactosPorSeleccion(seleccion: SeleccionJerarquica): Promise<ContactosPorSeleccionResult> {
     const { gerentes, movilizadores } = await this.getJerarquia();
-    const movilizadorIds = [...this.resolverMovilizadorIds(seleccion, gerentes, movilizadores)];
+    const movilizadorIdsBruto = this.resolverMovilizadorIds(seleccion, gerentes, movilizadores);
+
+    // Excluir movilizadores que envían mensajes masivos directamente desde su propio WhatsApp
+    const movilizadoresAutoEnvio = new Set(
+      movilizadores.filter((m) => m.enviaMensajesMasivos).map((m) => m.idUsuario),
+    );
+    const movilizadorIds = [...movilizadorIdsBruto].filter((id) => !movilizadoresAutoEnvio.has(id));
 
     if (movilizadorIds.length === 0) {
       return { contacts: [], movilizadorCount: 0, personaCount: 0 };

@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-saas-web",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "private": true,
   "scripts": {
     "start": "ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json",

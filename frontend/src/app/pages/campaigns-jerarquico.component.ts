@@ -2474,7 +2474,10 @@ export class CampaignsJerarquicoComponent implements OnInit {
   });
 
   readonly movilizadorOptions = computed<{ id: number; label: string }[]>(() =>
-    this.movilizadoresVisibles().map((m) => ({ id: m.idUsuario, label: `${m.nombreCompleto} (${m.totalPersonas} personas)` })));
+    this.movilizadoresVisibles().map((m) => {
+      const tag = m.enviaMensajesMasivos ? ' ⚡ [Auto-envío propio]' : '';
+      return { id: m.idUsuario, label: `${m.nombreCompleto} (${m.totalPersonas} personas)${tag}` };
+    }));
 
   /** Resumen legible de la jerarquía elegida */
   readonly resumenJerarquiaSeleccion = computed<string>(() => {
