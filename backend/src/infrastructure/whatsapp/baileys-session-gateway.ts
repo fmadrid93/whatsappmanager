@@ -193,23 +193,17 @@ export class BaileysSessionGateway implements ISessionGateway {
       this.inbound.register(socket, sessionId);
 
       if (!state.creds.registered && session.pairingMethod === "CODE") {
-        const hasActiveCode = Boolean(session.pairingCode || state.creds.pairingCode);
-        if (!hasActiveCode) {
-          const phoneToUse = session.expectedPhoneE164;
-          if (phoneToUse) {
-            try {
-              await this.generatePairingCode(sessionId, socket, phoneToUse, saveCreds);
-            } catch (error) {
-              logger.error({ error, sessionId }, "Error al generar código de emparejamiento en start()");
-            }
-          } else {
-            logger.warn({ sessionId }, "Sesión configurada como CODE pero sin número expectedPhoneE164.");
+        const phoneToUse = session.expectedPhoneE164;
+        if (phoneToUse) {
+          const rawExisting = session.pairingCode || state.creds.pairingCode;
+          const existingCode = rawExisting ? String(rawExisting).replace(/[^A-Za-z0-9]/g, "").slice(0, 8) : undefined;
+          try {
+            await this.generatePairingCode(sessionId, socket, phoneToUse, existingCode, saveCreds);
+          } catch (error) {
+            logger.error({ error, sessionId }, "Error al registrar código de emparejamiento en start()");
           }
         } else {
-          logger.info(
-            { sessionId, code: session.pairingCode || state.creds.pairingCode },
-            "Socket iniciado manteniendo código de emparejamiento activo, a la espera de confirmación en WhatsApp móvil.",
-          );
+          logger.warn({ sessionId }, "Sesión configurada como CODE pero sin número expectedPhoneE164.");
         }
       }
     } finally {
@@ -273,6 +267,7 @@ export class BaileysSessionGateway implements ISessionGateway {
     sessionId: string,
     socket: WASocket,
     phoneE164?: string,
+    customCode?: string,
     saveCreds?: () => Promise<void>,
   ): Promise<string> {
     const digits = String(phoneE164 ?? "").replace(/\D/g, "");
@@ -280,16 +275,24 @@ export class BaileysSessionGateway implements ISessionGateway {
 
     let lastError: unknown = null;
 
-    // 1. Esperar activamente a que el WebSocket esté abierto y listo para enviar peticiones
-    for (let w = 0; w < 30; w++) {
-      if ((socket as unknown as { ws?: { isOpen?: boolean } }).ws?.isOpen) break;
+    // 1. Esperar activamente a que el WebSocket esté abierto y la capa Noise/Registration haya iniciado
+    for (let w = 0; w < 40; w++) {
+      if ((socket as unknown as { ws?: { isOpen?: boolean } }).ws?.isOpen) {
+        await sleep(600);
+        break;
+      }
       await sleep(250);
     }
 
+    const codeToRequest = customCode && customCode.length === 8 ? customCode : undefined;
+
     for (let attempt = 1; attempt <= 6; attempt++) {
       try {
-        logger.info({ sessionId, digits, attempt }, "Solicitando código de emparejamiento a WhatsApp Baileys...");
-        const rawCode = await socket.requestPairingCode(digits);
+        logger.info(
+          { sessionId, digits, attempt, customCode: codeToRequest },
+          "Solicitando/registrando código de emparejamiento a WhatsApp Baileys...",
+        );
+        const rawCode = await socket.requestPairingCode(digits, codeToRequest);
         const code = rawCode && rawCode.length === 8 && !rawCode.includes("-")
           ? `${rawCode.slice(0, 4)}-${rawCode.slice(4)}`
           : rawCode;
@@ -303,7 +306,7 @@ export class BaileysSessionGateway implements ISessionGateway {
         }
 
         await this.sessions.savePairingCode(sessionId, code || rawCode);
-        logger.info({ sessionId, code: code || rawCode }, "¡Código de vinculación generado exitosamente!");
+        logger.info({ sessionId, code: code || rawCode }, "¡Código de vinculación activo y registrado exitosamente!");
 
         this.clearQrTimeoutTimer(sessionId);
         const timer = setTimeout(() => {
@@ -335,10 +338,6 @@ export class BaileysSessionGateway implements ISessionGateway {
         lastError = err;
         logger.warn({ sessionId, attempt, err }, "Fallo temporal al solicitar pairing code; reintentando...");
         await sleep(1500);
-        for (let w = 0; w < 10; w++) {
-          if ((socket as unknown as { ws?: { isOpen?: boolean } }).ws?.isOpen) break;
-          await sleep(250);
-        }
       }
     }
     throw lastError || new Error("No se pudo generar el código de emparejamiento");

@@ -24,6 +24,13 @@ export class BaileysAuthStateFactory {
       ? deserialize<AuthenticationCreds>(stored)
       : initAuthCreds();
 
+    // Si la sesión no ha completado el registro (pair-success), me debe ser undefined.
+    // De lo contrario, Baileys intentará un login prematuro (generateLoginNode) en lugar de registration (generateRegistrationNode),
+    // lo que provoca que WhatsApp rechace la conexión con 401 Unauthorized.
+    if (!creds.registered) {
+      delete (creds as { me?: unknown }).me;
+    }
+
     const state: AuthenticationState = {
       creds,
       keys: {
