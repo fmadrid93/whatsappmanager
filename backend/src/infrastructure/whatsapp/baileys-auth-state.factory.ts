@@ -36,7 +36,7 @@ export class BaileysAuthStateFactory {
             const value = deserialize<unknown>(payload);
             result[id] =
               type === "app-state-sync-key" && value
-                ? proto.Message.AppStateSyncKeyData.create(value as never)
+                ? proto.Message.AppStateSyncKeyData.fromObject(value as never)
                 : value;
           }
           return result as never;

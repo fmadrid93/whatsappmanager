@@ -522,9 +522,6 @@ export function createRoutes(container: AppContainer): Router {
       if (session) {
         if (session.status !== "CONNECTED" && session.status !== "WORKING") {
           try {
-            await container.whatsapp?.sessionGateway?.stop(session.id);
-          } catch {}
-          try {
             await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
             await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
           } catch {}
@@ -544,13 +541,6 @@ export function createRoutes(container: AppContainer): Router {
               leaseExpiresAt: null,
             },
           });
-          try {
-            if (container.whatsapp?.sessionGateway) {
-              await container.whatsapp.sessionGateway.start(session.id);
-            }
-          } catch (startErr) {
-            logger.warn({ sessionId: session.id, error: startErr }, "Aviso al reiniciar socket en POST /sessions");
-          }
         }
         return response.status(200).json(session);
       }
@@ -567,14 +557,6 @@ export function createRoutes(container: AppContainer): Router {
           isBotActive: Boolean(body.isBotActive ?? false),
         },
       });
-
-      try {
-        if (container.whatsapp?.sessionGateway) {
-          await container.whatsapp.sessionGateway.start(created.id);
-        }
-      } catch (startErr) {
-        logger.warn({ sessionId: created.id, error: startErr }, "Aviso al iniciar socket en POST /sessions");
-      }
 
       response.status(201).json(created);
     }),
@@ -631,22 +613,11 @@ export function createRoutes(container: AppContainer): Router {
           isBotActive: false,
         },
       });
-
-      try {
-        if (container.whatsapp?.sessionGateway) {
-          await container.whatsapp.sessionGateway.start(session.id);
-        }
-      } catch (startErr) {
-        logger.warn({ sessionId: session.id, error: startErr }, "Aviso al iniciar socket para nuevo pairing code");
-      }
     } else {
       if (session.pairingCode && session.expectedPhoneE164 === phone && session.status === "PAIRING_CODE") {
         return response.json({ ok: true, code: session.pairingCode, sessionId: session.id, name: session.name });
       }
 
-      try {
-        await container.whatsapp?.sessionGateway?.stop(session.id);
-      } catch {}
       try {
         await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
@@ -665,14 +636,6 @@ export function createRoutes(container: AppContainer): Router {
           leaseExpiresAt: null,
         },
       });
-
-      try {
-        if (container.whatsapp?.sessionGateway) {
-          await container.whatsapp.sessionGateway.start(session.id);
-        }
-      } catch (startErr) {
-        logger.warn({ sessionId: session.id, error: startErr }, "Aviso al reiniciar socket para nuevo pairing code");
-      }
     }
 
     // Esperar a que el Worker genere el código de emparejamiento (hasta 35s)
@@ -729,14 +692,6 @@ export function createRoutes(container: AppContainer): Router {
             isBotActive: false,
           },
         });
-
-        try {
-          if (container.whatsapp?.sessionGateway) {
-            await container.whatsapp.sessionGateway.start(session.id);
-          }
-        } catch (startErr) {
-          logger.warn({ sessionId: session.id, error: startErr }, "Aviso al iniciar socket para nueva sesión QR");
-        }
       } else {
         const isConn = (session.status === "CONNECTED" || session.status === "WORKING") && Boolean(session.whatsappJid);
         if (!isConn) {
@@ -745,9 +700,6 @@ export function createRoutes(container: AppContainer): Router {
           // Manejo específico para sesiones con código numérico (CODE)
           if (session.pairingMethod === "CODE") {
             if (forceReset) {
-              try {
-                await container.whatsapp?.sessionGateway?.stop(session.id);
-              } catch {}
               try {
                 await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
                 await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
@@ -767,13 +719,6 @@ export function createRoutes(container: AppContainer): Router {
                   leaseExpiresAt: null,
                 },
               });
-              try {
-                if (container.whatsapp?.sessionGateway) {
-                  await container.whatsapp.sessionGateway.start(session.id);
-                }
-              } catch (startErr) {
-                logger.warn({ sessionId: session.id, error: startErr }, "Aviso al reiniciar socket CODE");
-              }
             }
 
             // Si el código de vinculación aún no está listo, esperar unos segundos al worker/gateway
@@ -815,9 +760,6 @@ export function createRoutes(container: AppContainer): Router {
 
           if (shouldReset) {
             try {
-              await container.whatsapp?.sessionGateway?.stop(session.id);
-            } catch {}
-            try {
               await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
               await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
             } catch {}
@@ -838,14 +780,6 @@ export function createRoutes(container: AppContainer): Router {
                 leaseExpiresAt: null,
               },
             });
-
-            try {
-              if (container.whatsapp?.sessionGateway) {
-                await container.whatsapp.sessionGateway.start(session.id);
-              }
-            } catch (startErr) {
-              logger.warn({ sessionId: session.id, error: startErr }, "Aviso al reiniciar socket para sesión QR");
-            }
           }
         }
       }
@@ -937,9 +871,6 @@ export function createRoutes(container: AppContainer): Router {
       const identifier = String(request.params.id);
       const session = await resolveSession(identifier);
       if (session) {
-        try {
-          await container.whatsapp.sessionGateway.stop(session.id);
-        } catch {}
         await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
         await container.prisma.whatsAppSession.update({
@@ -960,14 +891,6 @@ export function createRoutes(container: AppContainer): Router {
             disconnectedAt: new Date(),
           },
         });
-
-        try {
-          if (container.whatsapp?.sessionGateway) {
-            await container.whatsapp.sessionGateway.start(session.id);
-          }
-        } catch (startErr) {
-          logger.warn({ sessionId: session.id, error: startErr }, "Aviso al iniciar socket en /reset");
-        }
       }
       response.json({ ok: true, reset: true });
     }),
@@ -1587,13 +1510,6 @@ export function createRoutes(container: AppContainer): Router {
         request.auth!.userId,
         body,
       );
-      try {
-        if (container.whatsapp?.sessionGateway) {
-          await container.whatsapp.sessionGateway.start(created.id);
-        }
-      } catch (startErr) {
-        logger.warn({ sessionId: created.id, error: startErr }, "Aviso al iniciar socket en POST /sessions (auth)");
-      }
       await audit(request, "SESSION_CREATED", "WhatsAppSession", created.id, {
         name: body.name,
         pairingMethod: body.pairingMethod,

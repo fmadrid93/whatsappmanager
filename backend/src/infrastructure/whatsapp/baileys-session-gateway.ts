@@ -180,7 +180,7 @@ export class BaileysSessionGateway implements ISessionGateway {
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         generateHighQualityLinkPreview: false,
-        logger: pino({ level: "silent" }),
+        logger: pino({ level: "warn" }),
         getMessage: async (key) => {
           if (!key.id) return undefined;
           const payload = await this.messages.getMessagePayload(sessionId, key.id);
@@ -194,20 +194,13 @@ export class BaileysSessionGateway implements ISessionGateway {
       this.messagePersistence.register(socket, sessionId);
       this.inbound.register(socket, sessionId);
 
-
       if (!state.creds.registered && session.pairingMethod === "CODE") {
         const phoneToUse = session.expectedPhoneE164;
         if (phoneToUse) {
-          // Solo solicitar pairing code si aún no tenemos uno vigente generado en BD
-          const fresh = await this.sessions.findById(sessionId);
-          if (!fresh?.pairingCode) {
-            try {
-              await this.generatePairingCode(sessionId, socket, phoneToUse);
-            } catch (error) {
-              logger.error({ error, sessionId }, "Error al generar código de emparejamiento en start()");
-            }
-          } else {
-            logger.info({ sessionId, code: fresh.pairingCode }, "Pairing code ya existente en BD, conservando código.");
+          try {
+            await this.generatePairingCode(sessionId, socket, phoneToUse);
+          } catch (error) {
+            logger.error({ error, sessionId }, "Error al generar código de emparejamiento en start()");
           }
         } else {
           logger.warn({ sessionId }, "Sesión configurada como CODE pero sin número expectedPhoneE164.");
