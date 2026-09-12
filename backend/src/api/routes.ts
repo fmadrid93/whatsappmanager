@@ -590,6 +590,7 @@ export function createRoutes(container: AppContainer): Router {
         data: {
           pairingMethod: "CODE",
           status: "STARTING",
+          deletedAt: null,
           lastConnectionError: null,
           expectedPhoneE164: phone,
           pairingCode: null,
@@ -706,6 +707,7 @@ export function createRoutes(container: AppContainer): Router {
               where: { id: session.id },
               data: {
                 status: "STARTING",
+                deletedAt: null,
                 pairingMethod: "QR",
                 qrCode: null,
                 pairingCode: null,
@@ -819,6 +821,7 @@ export function createRoutes(container: AppContainer): Router {
           where: { id: session.id },
           data: {
             status: "STARTING",
+            deletedAt: null,
             qrCode: null,
             qrUpdatedAt: null,
             pairingCode: null,
