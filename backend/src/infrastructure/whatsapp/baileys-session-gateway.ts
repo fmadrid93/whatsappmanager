@@ -175,10 +175,8 @@ export class BaileysSessionGateway implements ISessionGateway {
         version,
         agent,
         browser: pickBrowserFingerprint(sessionId),
-        printQRInTerminal: false,
         markOnlineOnConnect: false,
         syncFullHistory: false,
-        shouldSyncHistoryMessage: () => false,
         generateHighQualityLinkPreview: false,
         logger: pino({ level: "warn" }),
         getMessage: async (key) => {
@@ -195,15 +193,23 @@ export class BaileysSessionGateway implements ISessionGateway {
       this.inbound.register(socket, sessionId);
 
       if (!state.creds.registered && session.pairingMethod === "CODE") {
-        const phoneToUse = session.expectedPhoneE164;
-        if (phoneToUse) {
-          try {
-            await this.generatePairingCode(sessionId, socket, phoneToUse);
-          } catch (error) {
-            logger.error({ error, sessionId }, "Error al generar código de emparejamiento en start()");
+        const hasActiveCode = Boolean(session.pairingCode || state.creds.pairingCode);
+        if (!hasActiveCode) {
+          const phoneToUse = session.expectedPhoneE164;
+          if (phoneToUse) {
+            try {
+              await this.generatePairingCode(sessionId, socket, phoneToUse, saveCreds);
+            } catch (error) {
+              logger.error({ error, sessionId }, "Error al generar código de emparejamiento en start()");
+            }
+          } else {
+            logger.warn({ sessionId }, "Sesión configurada como CODE pero sin número expectedPhoneE164.");
           }
         } else {
-          logger.warn({ sessionId }, "Sesión configurada como CODE pero sin número expectedPhoneE164.");
+          logger.info(
+            { sessionId, code: session.pairingCode || state.creds.pairingCode },
+            "Socket iniciado manteniendo código de emparejamiento activo, a la espera de confirmación en WhatsApp móvil.",
+          );
         }
       }
     } finally {
@@ -222,19 +228,23 @@ export class BaileysSessionGateway implements ISessionGateway {
     const phone = phoneE164 || session?.expectedPhoneE164;
     if (!phone) throw new Error("Debes especificar un número telefónico para generar el código.");
 
+    await this.authRepository.clearSession(sessionId);
+    await this.sessions.savePairingCode(sessionId, null as never);
+
     let socket = this.registry.has(sessionId) ? this.registry.get(sessionId) : null;
-    if (!socket) {
-      await this.start(sessionId);
-      for (let i = 0; i < 20; i++) {
-        await sleep(300);
-        if (this.registry.has(sessionId)) {
-          socket = this.registry.get(sessionId);
-          break;
-        }
+    if (socket) {
+      this.registry.delete(sessionId);
+      this.cleanupSocket(socket, "Restarting for new pairing code");
+    }
+    await this.start(sessionId);
+    for (let i = 0; i < 40; i++) {
+      await sleep(250);
+      const updated = await this.sessions.findById(sessionId);
+      if (updated?.pairingCode) {
+        return updated.pairingCode;
       }
     }
-    if (!socket) throw new Error("No se pudo iniciar el canal de WhatsApp para generar el código.");
-    return this.generatePairingCode(sessionId, socket, phone);
+    throw new Error("No se pudo generar el código de emparejamiento en el tiempo esperado.");
   }
 
   async stop(sessionId: string): Promise<void> {
@@ -259,7 +269,12 @@ export class BaileysSessionGateway implements ISessionGateway {
   }
 
 
-  private async generatePairingCode(sessionId: string, socket: WASocket, phoneE164?: string): Promise<string> {
+  private async generatePairingCode(
+    sessionId: string,
+    socket: WASocket,
+    phoneE164?: string,
+    saveCreds?: () => Promise<void>,
+  ): Promise<string> {
     const digits = String(phoneE164 ?? "").replace(/\D/g, "");
     if (digits.length < 8) throw new Error("Configura un número válido para generar el código de vinculación.");
 
@@ -278,6 +293,14 @@ export class BaileysSessionGateway implements ISessionGateway {
         const code = rawCode && rawCode.length === 8 && !rawCode.includes("-")
           ? `${rawCode.slice(0, 4)}-${rawCode.slice(4)}`
           : rawCode;
+
+        if (saveCreds) {
+          try {
+            await saveCreds();
+          } catch (saveErr) {
+            logger.warn({ saveErr, sessionId }, "Error al guardar creds tras solicitar pairing code.");
+          }
+        }
 
         await this.sessions.savePairingCode(sessionId, code || rawCode);
         logger.info({ sessionId, code: code || rawCode }, "¡Código de vinculación generado exitosamente!");
