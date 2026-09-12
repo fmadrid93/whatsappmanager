@@ -83,6 +83,7 @@ export class BaileysSessionGateway implements ISessionGateway {
   private readonly restartingSessions = new Set<string>();
   private readonly startingSessions = new Set<string>();
   private readonly qrTimeoutTimers = new Map<string, NodeJS.Timeout>();
+  private readonly activePairingSockets = new WeakSet<WASocket>();
 
   constructor(
     private readonly sessions: ISessionRepository,
@@ -187,25 +188,10 @@ export class BaileysSessionGateway implements ISessionGateway {
       });
 
       this.registry.set(sessionId, socket);
-      this.registerConnectionUpdates(sessionId, socket);
+      this.registerConnectionUpdates(sessionId, socket, saveCreds);
       socket.ev.on("creds.update", saveCreds);
       this.messagePersistence.register(socket, sessionId);
       this.inbound.register(socket, sessionId);
-
-      if (!state.creds.registered && session.pairingMethod === "CODE") {
-        const phoneToUse = session.expectedPhoneE164;
-        if (phoneToUse) {
-          const rawExisting = session.pairingCode || state.creds.pairingCode;
-          const existingCode = rawExisting ? String(rawExisting).replace(/[^A-Za-z0-9]/g, "").slice(0, 8) : undefined;
-          try {
-            await this.generatePairingCode(sessionId, socket, phoneToUse, existingCode, saveCreds);
-          } catch (error) {
-            logger.error({ error, sessionId }, "Error al registrar código de emparejamiento en start()");
-          }
-        } else {
-          logger.warn({ sessionId }, "Sesión configurada como CODE pero sin número expectedPhoneE164.");
-        }
-      }
     } finally {
       this.startingSessions.delete(sessionId);
     }
@@ -273,24 +259,14 @@ export class BaileysSessionGateway implements ISessionGateway {
     const digits = String(phoneE164 ?? "").replace(/\D/g, "");
     if (digits.length < 8) throw new Error("Configura un número válido para generar el código de vinculación.");
 
-    let lastError: unknown = null;
-
-    // 1. Esperar activamente a que el WebSocket esté abierto y la capa Noise/Registration haya iniciado
-    for (let w = 0; w < 40; w++) {
-      if ((socket as unknown as { ws?: { isOpen?: boolean } }).ws?.isOpen) {
-        await sleep(600);
-        break;
-      }
-      await sleep(250);
-    }
-
     const codeToRequest = customCode && customCode.length === 8 ? customCode : undefined;
 
-    for (let attempt = 1; attempt <= 6; attempt++) {
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         logger.info(
           { sessionId, digits, attempt, customCode: codeToRequest },
-          "Solicitando/registrando código de emparejamiento a WhatsApp Baileys...",
+          "Solicitando/registrando código de emparejamiento con WhatsApp Baileys...",
         );
         const rawCode = await socket.requestPairingCode(digits, codeToRequest);
         const code = rawCode && rawCode.length === 8 && !rawCode.includes("-")
@@ -337,7 +313,7 @@ export class BaileysSessionGateway implements ISessionGateway {
       } catch (err) {
         lastError = err;
         logger.warn({ sessionId, attempt, err }, "Fallo temporal al solicitar pairing code; reintentando...");
-        await sleep(1500);
+        await sleep(1000);
       }
     }
     throw lastError || new Error("No se pudo generar el código de emparejamiento");
@@ -373,12 +349,28 @@ export class BaileysSessionGateway implements ISessionGateway {
     }, delayMs);
   }
 
-  private registerConnectionUpdates(sessionId: string, socket: WASocket): void {
+  private registerConnectionUpdates(
+    sessionId: string,
+    socket: WASocket,
+    saveCreds?: () => Promise<void>,
+  ): void {
     socket.ev.on("connection.update", async (update) => {
       try {
         if (update.qr) {
           const s = await this.sessions.findById(sessionId);
-          if (s?.pairingMethod !== "CODE") {
+          if (s?.pairingMethod === "CODE") {
+            if (!this.activePairingSockets.has(socket)) {
+              this.activePairingSockets.add(socket);
+              const phoneToUse = s.expectedPhoneE164;
+              if (phoneToUse) {
+                const rawExisting = s.pairingCode;
+                const existingCode = rawExisting ? String(rawExisting).replace(/[^A-Za-z0-9]/g, "").slice(0, 8) : undefined;
+                void this.generatePairingCode(sessionId, socket, phoneToUse, existingCode, saveCreds);
+              } else {
+                logger.warn({ sessionId }, "Sesión configurada como CODE pero sin expectedPhoneE164.");
+              }
+            }
+          } else {
             await this.sessions.saveQr(sessionId, update.qr);
             logger.info({ sessionId }, "QR actualizado.");
 
