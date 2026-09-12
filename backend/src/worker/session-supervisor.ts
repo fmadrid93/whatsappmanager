@@ -49,7 +49,6 @@ export class SessionSupervisor {
       metrics.gauge("wa_sessions_local", "WhatsApp sockets owned by this worker.", { worker: this.workerId }, this.registry.ids().length);
 
       const stoppedStatuses = new Set([
-        "STARTING",
         "DISCONNECTED",
         "DELETED",
         "LOGGED_OUT",

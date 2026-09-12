@@ -152,6 +152,11 @@ export class BaileysSessionGateway implements ISessionGateway {
         return;
       }
 
+      const agent = buildProxyAgent(sessionId, {
+        proxyUrl: env.PROXY_URL,
+        bucketCount: env.PROXY_IP_BUCKET_COUNT,
+      });
+
       logger.info(
         {
           sessionId,
@@ -160,14 +165,10 @@ export class BaileysSessionGateway implements ISessionGateway {
           baileysPackageTarget: BAILEYS_PACKAGE_TARGET,
           pairingMethod: session.pairingMethod,
           privacyTokenHandling: "BAILEYS_V7_NATIVE",
+          hasProxy: Boolean(agent),
         },
         "Iniciando socket Baileys con manejo nativo de tokens de privacidad.",
       );
-
-      const agent = buildProxyAgent(sessionId, {
-        proxyUrl: env.PROXY_URL,
-        bucketCount: env.PROXY_IP_BUCKET_COUNT,
-      });
 
       const socket = makeWASocket({
         auth: state,
