@@ -64,20 +64,32 @@ import { ApiService, type SessionRecord, type Voto1x10Jerarquia } from "../core/
 
         <p-card header="Vinculación">
           <div class="qr-box">
-            @if (selectedQr()) {
-              <img [src]="selectedQr()" alt="Código QR de WhatsApp" />
-              <div class="muted small" style="margin-top: 0.5rem;">Escanea este código con WhatsApp en tu celular.</div>
-            } @else if (selectedPairingCode()) {
-              <div class="pairing-code">{{ selectedPairingCode() }}</div>
-              <div class="muted">WhatsApp → Dispositivos vinculados → Vincular con número de teléfono.</div>
-            } @else if (loadingPairing()) {
-              <div class="loading-state" style="padding: 2rem 1rem; text-align: center;">
-                <i class="pi pi-spin pi-spinner" style="font-size: 2.5rem; color: #2563eb; display: block; margin-bottom: 0.75rem;"></i>
-                <strong style="color: #1e293b; font-size: 1rem;">Generando código en vivo...</strong>
-                <div class="muted small" style="margin-top: 0.25rem;">Conectando con los servidores de WhatsApp...</div>
-              </div>
+            @if (selectedPairingMethod() === 'CODE') {
+              @if (selectedPairingCode()) {
+                <div class="pairing-code">{{ selectedPairingCode() }}</div>
+                <div class="muted">WhatsApp → Dispositivos vinculados → Vincular con número de teléfono.</div>
+              } @else if (loadingPairing()) {
+                <div class="loading-state" style="padding: 2rem 1rem; text-align: center;">
+                  <i class="pi pi-spin pi-spinner" style="font-size: 2.5rem; color: #2563eb; display: block; margin-bottom: 0.75rem;"></i>
+                  <strong style="color: #1e293b; font-size: 1rem;">Generando código en vivo...</strong>
+                  <div class="muted small" style="margin-top: 0.25rem;">Conectando con los servidores de WhatsApp...</div>
+                </div>
+              } @else {
+                <div class="muted">Crea una sesión o selecciona “Ver vinculación” / “Nuevo código”.</div>
+              }
             } @else {
-              <div class="muted">Crea una sesión o selecciona “Ver vinculación” / “Revincular”.</div>
+              @if (selectedQr()) {
+                <img [src]="selectedQr()" alt="Código QR de WhatsApp" />
+                <div class="muted small" style="margin-top: 0.5rem;">Escanea este código con WhatsApp en tu celular.</div>
+              } @else if (loadingPairing()) {
+                <div class="loading-state" style="padding: 2rem 1rem; text-align: center;">
+                  <i class="pi pi-spin pi-spinner" style="font-size: 2.5rem; color: #2563eb; display: block; margin-bottom: 0.75rem;"></i>
+                  <strong style="color: #1e293b; font-size: 1rem;">Generando código QR en vivo...</strong>
+                  <div class="muted small" style="margin-top: 0.25rem;">Conectando con los servidores de WhatsApp...</div>
+                </div>
+              } @else {
+                <div class="muted">Crea una sesión o selecciona “Ver vinculación” / “Revincular”.</div>
+              }
             }
           </div>
 
@@ -88,7 +100,7 @@ import { ApiService, type SessionRecord, type Voto1x10Jerarquia } from "../core/
             <div class="notice danger">
               <strong>Error {{ selectedErrorCode() || '' }}</strong><br />{{ selectedError() }}
               @if (selectedErrorCode() === 405) {
-                <div class="muted">El rechazo ocurrió antes de que WhatsApp emitiera el QR. Usa “Revincular” para un intento limpio.</div>
+                <div class="muted">El rechazo ocurrió antes de que WhatsApp emitiera el QR o código. Usa “Revincular” para un intento limpio.</div>
               }
             </div>
           }
@@ -360,6 +372,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
   readonly saving = signal(false);
   readonly selectedQr = signal<string | null>(null);
   readonly selectedPairingCode = signal<string | null>(null);
+  readonly selectedPairingMethod = signal<"QR" | "CODE">("QR");
   readonly selectedStatus = signal("");
   readonly selectedError = signal("");
   readonly selectedErrorCode = signal<number | undefined>(undefined);
@@ -492,6 +505,8 @@ export class SessionsComponent implements OnInit, OnDestroy {
       this.messages.add({ severity: "warn", summary: "Ingresa el número para generar el código" });
       return;
     }
+    const chosenMethod = this.pairingMethod;
+    this.selectedPairingMethod.set(chosenMethod);
     this.saving.set(true);
     this.loadingPairing.set(true);
     this.api.createSession({
@@ -504,7 +519,11 @@ export class SessionsComponent implements OnInit, OnDestroy {
         this.expectedPhone = "";
         this.load();
         this.watchPairing(session);
-        this.messages.add({ severity: "success", summary: "Sesión creada", detail: "Generando código de vinculación..." });
+        this.messages.add({
+          severity: "success",
+          summary: "Sesión creada",
+          detail: chosenMethod === "CODE" ? "Generando código de vinculación..." : "Generando código QR...",
+        });
       },
       error: (error: { error?: { message?: string } }) => {
         this.messages.add({ severity: "error", summary: "No se pudo crear", detail: error.error?.message });
@@ -521,6 +540,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
       return;
     }
     this.selectedSessionId = session.id;
+    this.selectedPairingMethod.set(session.pairingMethod ?? "QR");
     this.selectedQr.set(null);
     this.selectedPairingCode.set(null);
     this.selectedError.set("");
@@ -534,6 +554,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
 
   requestCode(session: SessionRecord): void {
     this.selectedSessionId = session.id;
+    this.selectedPairingMethod.set("CODE");
     this.selectedQr.set(null);
     this.selectedPairingCode.set(null);
     this.selectedError.set("");
@@ -565,25 +586,43 @@ export class SessionsComponent implements OnInit, OnDestroy {
 
   relink(session: SessionRecord): void {
     this.selectedSessionId = session.id;
+    this.selectedPairingMethod.set(session.pairingMethod ?? "QR");
     this.selectedQr.set(null);
     this.selectedPairingCode.set(null);
     this.selectedError.set("");
     this.selectedStatus.set("CONNECTING");
     this.loadingPairing.set(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
-    this.messages.add({ severity: "info", summary: "Iniciando vinculación", detail: "Generando nuevo código QR en vivo..." });
-    this.api.relinkSession(session.id).subscribe({
-      next: () => {
-        this.load();
-        if (this.pairingTimer) clearInterval(this.pairingTimer);
-        this.refreshPairing();
-        this.pairingTimer = setInterval(() => this.refreshPairing(), 2000);
-      },
-      error: (error: { error?: { message?: string } }) => {
-        this.loadingPairing.set(false);
-        this.messages.add({ severity: "error", summary: "No se pudo revincular", detail: error.error?.message });
-      },
-    });
+
+    if (session.pairingMethod === "CODE") {
+      this.messages.add({ severity: "info", summary: "Iniciando vinculación", detail: "Generando nuevo código de emparejamiento..." });
+      this.api.requestPairingCode(session.id, session.expectedPhoneE164).subscribe({
+        next: () => {
+          this.load();
+          if (this.pairingTimer) clearInterval(this.pairingTimer);
+          this.refreshPairing();
+          this.pairingTimer = setInterval(() => this.refreshPairing(), 2000);
+        },
+        error: (error: { error?: { message?: string } }) => {
+          this.loadingPairing.set(false);
+          this.messages.add({ severity: "error", summary: "No se pudo revincular", detail: error.error?.message });
+        },
+      });
+    } else {
+      this.messages.add({ severity: "info", summary: "Iniciando vinculación", detail: "Generando nuevo código QR en vivo..." });
+      this.api.relinkSession(session.id).subscribe({
+        next: () => {
+          this.load();
+          if (this.pairingTimer) clearInterval(this.pairingTimer);
+          this.refreshPairing();
+          this.pairingTimer = setInterval(() => this.refreshPairing(), 2000);
+        },
+        error: (error: { error?: { message?: string } }) => {
+          this.loadingPairing.set(false);
+          this.messages.add({ severity: "error", summary: "No se pudo revincular", detail: error.error?.message });
+        },
+      });
+    }
   }
 
   remove(session: SessionRecord): void {
@@ -624,14 +663,27 @@ export class SessionsComponent implements OnInit, OnDestroy {
     if (!this.selectedSessionId) return;
     this.api.sessionQr(this.selectedSessionId).subscribe({
       next: (result) => {
-        const rawRes = result as unknown as { qrDataUrl?: string; qr?: string; qrPngBase64?: string; pairingCode?: string; status: string; lastConnectionError?: string; lastConnectionCode?: number };
+        const rawRes = result as unknown as {
+          qrDataUrl?: string;
+          qr?: string;
+          qrPngBase64?: string;
+          pairingCode?: string;
+          pairingMethod?: "QR" | "CODE";
+          status: string;
+          lastConnectionError?: string;
+          lastConnectionCode?: number;
+        };
+        const method = rawRes.pairingMethod || "QR";
+        this.selectedPairingMethod.set(method);
+
         const qr = rawRes.qrDataUrl || rawRes.qr || (rawRes.qrPngBase64 ? `data:image/png;base64,${rawRes.qrPngBase64}` : null);
-        this.selectedQr.set(qr);
+        this.selectedQr.set(method === "QR" ? qr : null);
         this.selectedPairingCode.set(result.pairingCode);
         this.selectedStatus.set(result.status);
         this.selectedError.set(result.lastConnectionError || "");
         this.selectedErrorCode.set(result.lastConnectionCode);
-        if (qr || result.pairingCode) {
+
+        if ((method === "QR" && qr) || (method === "CODE" && result.pairingCode)) {
           this.loadingPairing.set(false);
         }
         this.load();
@@ -649,6 +701,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
 
   private clearSelection(): void {
     this.selectedSessionId = undefined;
+    this.selectedPairingMethod.set("QR");
     this.selectedQr.set(null);
     this.selectedPairingCode.set(null);
     this.selectedStatus.set("");

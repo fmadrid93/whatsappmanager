@@ -18,6 +18,7 @@ import { sleep } from "../shared/utils/delay.js";
 import { parseSpintax } from "../domain/campaign/campaign-message.js";
 import { stableShardKey } from "../domain/scaling/shard.js";
 import { logger } from "../shared/logger/logger.js";
+import { PhoneNormalizerService } from "../application/services/phone-normalizer.service.js";
 
 export const campaignContactSchema = z.object({
   name: z.string().max(150).optional(),
@@ -161,6 +162,7 @@ function requireRouteParam(request: Request, name: string): string {
 }
 export function createRoutes(container: AppContainer): Router {
   const router = Router();
+  const phoneNormalizer = new PhoneNormalizerService();
   const auth = authMiddleware(container.services.authService);
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -384,23 +386,40 @@ export function createRoutes(container: AppContainer): Router {
     "/sessions",
     asyncHandler(async (request, response) => {
       try {
+        const companyParam = (request.query.company || request.query.empresa) ? String(request.query.company || request.query.empresa).trim().toLowerCase() : null;
         const userIdParam = request.query.userId ? String(request.query.userId).trim() : null;
         const userNameParam = (request.query.username || request.query.user) ? String(request.query.username || request.query.user).trim() : null;
         const sessionNameParam = request.query.session ? String(request.query.session).trim() : null;
         const roleParam = request.query.role ? String(request.query.role).trim().toLowerCase() : null;
         const allSessionsParam = request.query.all === "true" || request.query.all === "1";
-        const hasQuery = Boolean(userIdParam || userNameParam || sessionNameParam || roleParam);
+        const hasQuery = Boolean(companyParam || userIdParam || userNameParam || sessionNameParam || roleParam);
 
         let whereClause: any = {
           status: { notIn: ["DELETED", "LOGGED_OUT"] },
         };
 
         if (!allSessionsParam) {
+          const andConditions: any[] = [];
+
+          // 1. Filtrado estricto por Empresa / Tenant / Prefijo de Compañía
+          if (companyParam) {
+            andConditions.push({
+              OR: [
+                { name: { startsWith: `${companyParam}_` } },
+                { name: { contains: `_${companyParam}_` } },
+                { name: { equals: companyParam } },
+              ],
+            });
+          }
+
+          // 2. Filtrado por sesión específica o usuario
           if (sessionNameParam) {
-            whereClause.OR = [
-              { name: sessionNameParam },
-              { name: { contains: sessionNameParam } },
-            ];
+            andConditions.push({
+              OR: [
+                { name: sessionNameParam },
+                { name: { contains: sessionNameParam } },
+              ],
+            });
           } else if (userIdParam || userNameParam) {
             const orConditions: any[] = [];
             if (userNameParam) {
@@ -420,15 +439,19 @@ export function createRoutes(container: AppContainer): Router {
                 { name: { contains: `_u${userIdParam}_` } },
               );
             }
-            whereClause.OR = orConditions;
+            andConditions.push({ OR: orConditions });
           }
 
-          // Aislamiento estricto de roles: un movilizador o usuario regular nunca puede ver sesiones de admin
+          // 3. Aislamiento estricto de roles: un movilizador o usuario regular nunca puede ver sesiones de admin
           if (roleParam && (roleParam.includes("movil") || roleParam === "usr" || roleParam === "usuario")) {
             whereClause.NOT = [
               { name: { contains: "_admin_" } },
               { name: { startsWith: "admin_" } },
             ];
+          }
+
+          if (andConditions.length > 0) {
+            whereClause.AND = andConditions;
           }
         }
 
@@ -439,13 +462,13 @@ export function createRoutes(container: AppContainer): Router {
           orderBy: { createdAt: "desc" },
         });
 
-        // Si la petición viene con parámetros de consulta (ej. desde Flutter), retornamos el formato compatible
+        // Si la petición viene con parámetros de consulta (ej. desde Flutter o Angular), retornamos formato compatible
         if (hasQuery) {
           const names = all.map((s) => s.name);
-          return response.json({ sessions: names, items: all });
+          return response.json({ ok: true, sessions: all, items: all, names });
         }
 
-        // Si la petición viene del Panel Web Admin Angular (localhost:4200/sessions), retornamos el Array directo
+        // Si la petición viene del Panel Web Admin Angular sin query, retornamos el Array directo
         response.json(all);
       } catch (err: any) {
         response.status(500).json({ error: err?.message || "Error al listar sesiones" });
@@ -478,22 +501,56 @@ export function createRoutes(container: AppContainer): Router {
 
       const name = String(request.params.id || body.name || `sesion_${Date.now()}`);
       const pairingMethod = body.pairingMethod === "CODE" ? "CODE" : "QR";
-      const expectedPhoneE164 = body.expectedPhoneE164 ? String(body.expectedPhoneE164) : null;
+      let expectedPhoneE164: string | null = null;
+      const rawPhone = String(body.expectedPhoneE164 || body.expectedPhone || body.phone || body.phoneE164 || "").trim();
+      if (rawPhone) {
+        const norm = phoneNormalizer.tryNormalize(rawPhone, container.env.DEFAULT_COUNTRY_REGION);
+        if (norm && norm.ok) {
+          expectedPhoneE164 = norm.value.e164;
+        } else {
+          const digits = rawPhone.replace(/\D/g, "");
+          if (digits.length >= 8) {
+            expectedPhoneE164 = rawPhone.startsWith("+") ? rawPhone : `+${rawPhone}`;
+          }
+        }
+      }
 
       let session = await container.prisma.whatsAppSession.findFirst({
         where: { name },
       });
 
       if (session) {
-        if (session.status === "DELETED" || session.status === "LOGGED_OUT" || session.status === "DISCONNECTED") {
+        if (session.status !== "CONNECTED" && session.status !== "WORKING") {
+          try {
+            await container.whatsapp?.sessionGateway?.stop(session.id);
+          } catch {}
+          try {
+            await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
+            await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
+          } catch {}
           session = await container.prisma.whatsAppSession.update({
             where: { id: session.id },
             data: {
               status: "STARTING",
               pairingMethod,
+              expectedPhoneE164: expectedPhoneE164 ?? session.expectedPhoneE164,
+              pairingCode: null,
+              pairingCodeUpdatedAt: null,
+              qrCode: null,
+              qrUpdatedAt: null,
               deletedAt: null,
+              lastConnectionError: null,
+              leaseOwner: null,
+              leaseExpiresAt: null,
             },
           });
+          try {
+            if (container.whatsapp?.sessionGateway) {
+              await container.whatsapp.sessionGateway.start(session.id);
+            }
+          } catch (startErr) {
+            logger.warn({ sessionId: session.id, error: startErr }, "Aviso al reiniciar socket en POST /sessions");
+          }
         }
         return response.status(200).json(session);
       }
@@ -527,13 +584,22 @@ export function createRoutes(container: AppContainer): Router {
     const identifier = String(request.params.id);
     let session = await resolveSession(identifier);
     const body = request.body || {};
-    let phone = String(body.phone || body.phoneE164 || session?.expectedPhoneE164 || "").trim();
-
-    if (!phone || phone.replace(/\D/g, "").length < 8) {
-      return response.status(400).json({ error: "Debes proporcionar un número de teléfono válido con código de país (ej. +595972686891)" });
+    let rawPhone = String(body.phone || body.phoneE164 || body.expectedPhone || body.expectedPhoneE164 || session?.expectedPhoneE164 || "").trim();
+    let phone: string | null = null;
+    if (rawPhone) {
+      const norm = phoneNormalizer.tryNormalize(rawPhone, container.env.DEFAULT_COUNTRY_REGION);
+      if (norm && norm.ok) {
+        phone = norm.value.e164;
+      } else {
+        const digits = rawPhone.replace(/\D/g, "");
+        if (digits.length >= 8) {
+          phone = rawPhone.startsWith("+") ? rawPhone : `+${rawPhone}`;
+        }
+      }
     }
-    if (!phone.startsWith("+")) {
-      phone = `+${phone}`;
+
+    if (!phone) {
+      return response.status(400).json({ error: "Debes proporcionar un número de teléfono válido con código de país (ej. +595972686891 o +59170000000)" });
     }
 
     if (!session) {
@@ -675,25 +741,77 @@ export function createRoutes(container: AppContainer): Router {
         const isConn = (session.status === "CONNECTED" || session.status === "WORKING") && Boolean(session.whatsappJid);
         if (!isConn) {
           const forceReset = request.query.reset === "true" || request.query.force === "true";
-          const isWaitingCode = !forceReset && session.pairingMethod === "CODE" && Boolean(session.pairingCode) && session.status !== "DISCONNECTED" && session.status !== "DELETED";
-          if (isWaitingCode) {
+
+          // Manejo específico para sesiones con código numérico (CODE)
+          if (session.pairingMethod === "CODE") {
+            if (forceReset) {
+              try {
+                await container.whatsapp?.sessionGateway?.stop(session.id);
+              } catch {}
+              try {
+                await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
+                await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
+              } catch {}
+              session = await container.prisma.whatsAppSession.update({
+                where: { id: session.id },
+                data: {
+                  status: "STARTING",
+                  pairingMethod: "CODE",
+                  pairingCode: null,
+                  pairingCodeUpdatedAt: null,
+                  qrCode: null,
+                  qrUpdatedAt: null,
+                  deletedAt: null,
+                  lastConnectionError: null,
+                  leaseOwner: null,
+                  leaseExpiresAt: null,
+                },
+              });
+              try {
+                if (container.whatsapp?.sessionGateway) {
+                  await container.whatsapp.sessionGateway.start(session.id);
+                }
+              } catch (startErr) {
+                logger.warn({ sessionId: session.id, error: startErr }, "Aviso al reiniciar socket CODE");
+              }
+            }
+
+            // Si el código de vinculación aún no está listo, esperar unos segundos al worker/gateway
+            let freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+            if (!freshSession?.pairingCode && (freshSession?.status === "STARTING" || freshSession?.status === "CONNECTING" || freshSession?.status === "NEW" || freshSession?.status === "PAIRING_CODE")) {
+              for (let i = 0; i < 10; i++) {
+                await sleep(350);
+                freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+                if (freshSession?.pairingCode || freshSession?.status === "CONNECTED" || freshSession?.status === "PAIRING_FAILED") {
+                  break;
+                }
+              }
+            }
+
+            const isCodeConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
             return response.json({
-              available: false,
-              connected: false,
+              available: Boolean(freshSession?.pairingCode) && !isCodeConnected,
+              connected: isCodeConnected,
               pairingMethod: "CODE",
-              pairingCode: session.pairingCode,
-              status: session.status,
+              pairingCode: isCodeConnected ? null : (freshSession?.pairingCode ?? null),
+              pairingCodeUpdatedAt: freshSession?.pairingCodeUpdatedAt ?? null,
+              qr: null,
+              qrDataUrl: null,
+              qrPngBase64: null,
+              qrCode: null,
+              status: freshSession?.status ?? "STARTING",
+              lastConnectionCode: freshSession?.lastConnectionCode ?? null,
+              lastConnectionError: freshSession?.lastConnectionError ?? null,
             });
           }
 
-          const isDeadStatus = ["DELETED", "LOGGED_OUT", "PAIRING_FAILED", "DISCONNECTED", "NEW", "QUARANTINED"].includes(session.status);
-          const isDifferentMethod = session.pairingMethod !== "QR";
-          const isStaleQr = Boolean(session.qrUpdatedAt && Date.now() - new Date(session.qrUpdatedAt).getTime() > 120_000);
-          const isStaleStarting = session.status === "STARTING" && Date.now() - new Date(session.updatedAt).getTime() > 15_000;
-          const isStaleConnecting = (session.status === "CONNECTING" || session.status === "QR_REQUIRED") && !session.qrCode && Date.now() - new Date(session.updatedAt).getTime() > 12_000;
-          const isMissingFromMemory = !container.whatsapp?.sockets?.has(session.id) && !session.qrCode;
+          // Manejo para sesiones QR
+          const isDeadStatus = ["DELETED", "LOGGED_OUT", "PAIRING_FAILED"].includes(session.status);
+          const isStaleQr = Boolean(session.qrUpdatedAt && Date.now() - new Date(session.qrUpdatedAt).getTime() > 150_000);
+          const isStaleStarting = (session.status === "STARTING" || session.status === "CONNECTING") && Date.now() - new Date(session.updatedAt).getTime() > 45_000 && !session.qrCode;
+          const isDeadDisconnected = session.status === "DISCONNECTED" && !session.qrCode;
 
-          const shouldReset = forceReset || isDeadStatus || isDifferentMethod || isStaleQr || isStaleStarting || isStaleConnecting || isMissingFromMemory;
+          const shouldReset = forceReset || isDeadStatus || isStaleQr || isStaleStarting || isDeadDisconnected;
 
           if (shouldReset) {
             try {
@@ -710,7 +828,9 @@ export function createRoutes(container: AppContainer): Router {
                 deletedAt: null,
                 pairingMethod: "QR",
                 qrCode: null,
+                qrUpdatedAt: null,
                 pairingCode: null,
+                pairingCodeUpdatedAt: null,
                 phoneE164: null,
                 whatsappJid: null,
                 lastConnectionError: null,
@@ -743,17 +863,22 @@ export function createRoutes(container: AppContainer): Router {
       }
 
       const isConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
-      const qrDataUrl = freshSession?.qrCode ? await QRCode.toDataURL(freshSession.qrCode, { width: 360, margin: 2 }) : null;
+      const qrDataUrl = (freshSession?.pairingMethod === "QR" && freshSession?.qrCode) ? await QRCode.toDataURL(freshSession.qrCode, { width: 360, margin: 2 }) : null;
       const qrPngBase64 = qrDataUrl ? qrDataUrl.replace(/^data:image\/png;base64,/, "") : null;
 
       response.json({
         available: Boolean(freshSession?.qrCode) && !isConnected,
         connected: isConnected,
+        pairingMethod: freshSession?.pairingMethod ?? "QR",
+        pairingCode: freshSession?.pairingCode ?? null,
+        pairingCodeUpdatedAt: freshSession?.pairingCodeUpdatedAt ?? null,
         qr: qrDataUrl ?? "",
         qrDataUrl: qrDataUrl ?? "",
         qrPngBase64: isConnected ? null : qrPngBase64,
         qrCode: isConnected ? null : (freshSession?.qrCode ?? null),
         status: freshSession?.status ?? "STARTING",
+        lastConnectionCode: freshSession?.lastConnectionCode ?? null,
+        lastConnectionError: freshSession?.lastConnectionError ?? null,
       });
     }),
   );
@@ -1462,6 +1587,13 @@ export function createRoutes(container: AppContainer): Router {
         request.auth!.userId,
         body,
       );
+      try {
+        if (container.whatsapp?.sessionGateway) {
+          await container.whatsapp.sessionGateway.start(created.id);
+        }
+      } catch (startErr) {
+        logger.warn({ sessionId: created.id, error: startErr }, "Aviso al iniciar socket en POST /sessions (auth)");
+      }
       await audit(request, "SESSION_CREATED", "WhatsAppSession", created.id, {
         name: body.name,
         pairingMethod: body.pairingMethod,
@@ -1500,7 +1632,7 @@ export function createRoutes(container: AppContainer): Router {
         pairingCode: session.pairingCode ?? null,
         pairingCodeUpdatedAt: session.pairingCodeUpdatedAt,
         qrUpdatedAt: session.qrUpdatedAt,
-        qrDataUrl: session.qrCode ? await QRCode.toDataURL(session.qrCode, { width: 360, margin: 2 }) : null,
+        qrDataUrl: (session.pairingMethod === "QR" && session.qrCode) ? await QRCode.toDataURL(session.qrCode, { width: 360, margin: 2 }) : null,
         lastConnectionCode: session.lastConnectionCode,
         lastConnectionError: session.lastConnectionError,
       });
