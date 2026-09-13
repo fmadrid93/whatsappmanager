@@ -66,8 +66,34 @@ import { ApiService, type SessionRecord, type Voto1x10Jerarquia } from "../core/
           <div class="qr-box">
             @if (selectedPairingMethod() === 'CODE') {
               @if (selectedPairingCode()) {
-                <div class="pairing-code">{{ selectedPairingCode() }}</div>
-                <div class="muted">WhatsApp → Dispositivos vinculados → Vincular con número de teléfono.</div>
+                <div class="pairing-code-wrapper">
+                  <div class="pairing-code-badge">CÓDIGO DE VINCULACIÓN</div>
+                  <div class="pairing-code-display">
+                    <span class="code-text">{{ selectedPairingCode() }}</span>
+                    <button type="button" class="btn-copy-code" (click)="copiarCodigo(selectedPairingCode()!)" title="Copiar código">
+                      <i class="pi pi-copy"></i> Copiar
+                    </button>
+                  </div>
+
+                  <div class="pairing-instructions-box">
+                    <div class="instruction-header">
+                      <i class="pi pi-mobile"></i>
+                      <span>Cómo vincular en tu teléfono:</span>
+                    </div>
+                    <ol class="instruction-steps">
+                      <li>Abre <strong>WhatsApp</strong> en tu celular.</li>
+                      <li>Toca <strong>Menú ⋮</strong> (o Configuración ⚙️) &gt; <strong>Dispositivos vinculados</strong>.</li>
+                      <li>Toca <strong>Vincular un dispositivo</strong>.</li>
+                      <li>Toca abajo en <strong>"Vincular con el número de teléfono"</strong>.</li>
+                      <li>Ingresa este código: <strong>{{ selectedPairingCode() }}</strong></li>
+                    </ol>
+                  </div>
+
+                  <div class="waiting-badge">
+                    <span class="pulse-dot"></span>
+                    <span>Esperando confirmación desde WhatsApp en tu móvil...</span>
+                  </div>
+                </div>
               } @else if (loadingPairing()) {
                 <div class="loading-state" style="padding: 2rem 1rem; text-align: center;">
                   <i class="pi pi-spin pi-spinner" style="font-size: 2.5rem; color: #2563eb; display: block; margin-bottom: 0.75rem;"></i>
@@ -353,7 +379,112 @@ import { ApiService, type SessionRecord, type Voto1x10Jerarquia } from "../core/
     .notice { padding: .8rem 1rem; border-radius: .55rem; margin: .75rem 0; }
     .notice.warning { background: #fff7d6; color: #6b4f00; }
     .notice.danger { background: #fee2e2; color: #991b1b; }
-    .pairing-code { font-size: 2rem; font-weight: 800; letter-spacing: .25rem; margin-bottom: .75rem; }
+    
+    .pairing-code-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.85rem;
+      width: 100%;
+      padding: 0.5rem 0;
+    }
+    .pairing-code-badge {
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.08rem;
+      color: #2563eb;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+    }
+    .pairing-code-display {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: #f8fafc;
+      border: 2px dashed #93c5fd;
+      border-radius: 12px;
+      padding: 0.75rem 1.25rem;
+    }
+    .code-text {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 2.25rem;
+      font-weight: 900;
+      letter-spacing: 0.25rem;
+      color: #0f172a;
+    }
+    .btn-copy-code {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: #2563eb;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.45rem 0.8rem;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .btn-copy-code:hover {
+      background: #1d4ed8;
+    }
+    .pairing-instructions-box {
+      background: #f1f5f9;
+      border-radius: 10px;
+      padding: 0.85rem 1.1rem;
+      width: 100%;
+      text-align: left;
+      font-size: 0.82rem;
+      color: #334155;
+    }
+    .instruction-header {
+      font-weight: 700;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.5rem;
+      font-size: 0.88rem;
+    }
+    .instruction-steps {
+      margin: 0;
+      padding-left: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .instruction-steps strong {
+      color: #0f172a;
+    }
+    .waiting-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #059669;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      padding: 0.4rem 0.85rem;
+      border-radius: 999px;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    
     .status-line { margin-top: .75rem; }
     .mismatch { color: #b91c1c; font-size: .78rem; font-weight: 700; }
     .status-pill.quarantine { background: #fee2e2; color: #991b1b; }
@@ -632,6 +763,17 @@ export class SessionsComponent implements OnInit, OnDestroy {
       this.load();
       this.messages.add({ severity: "success", summary: "Sesión eliminada" });
     });
+  }
+
+  copiarCodigo(codigo: string): void {
+    const raw = codigo.replace(/[^A-Za-z0-9]/g, "");
+    navigator.clipboard.writeText(raw).then(() => {
+      this.messages.add({
+        severity: "info",
+        summary: "Código copiado",
+        detail: `Código ${codigo} copiado al portapapeles.`,
+      });
+    }).catch(() => {});
   }
 
   sessionStatusLabel(status: string): string {

@@ -253,22 +253,19 @@ export class BaileysSessionGateway implements ISessionGateway {
     sessionId: string,
     socket: WASocket,
     phoneE164?: string,
-    customCode?: string,
     saveCreds?: () => Promise<void>,
   ): Promise<string> {
     const digits = String(phoneE164 ?? "").replace(/\D/g, "");
     if (digits.length < 8) throw new Error("Configura un número válido para generar el código de vinculación.");
 
-    const codeToRequest = customCode && customCode.length === 8 ? customCode : undefined;
-
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         logger.info(
-          { sessionId, digits, attempt, customCode: codeToRequest },
-          "Solicitando/registrando código de emparejamiento con WhatsApp Baileys...",
+          { sessionId, digits, attempt },
+          "Solicitando código de emparejamiento limpio con WhatsApp Baileys...",
         );
-        const rawCode = await socket.requestPairingCode(digits, codeToRequest);
+        const rawCode = await socket.requestPairingCode(digits);
         const code = rawCode && rawCode.length === 8 && !rawCode.includes("-")
           ? `${rawCode.slice(0, 4)}-${rawCode.slice(4)}`
           : rawCode;
@@ -290,14 +287,14 @@ export class BaileysSessionGateway implements ISessionGateway {
             try {
               const current = await this.sessions.findById(sessionId);
               if (current && current.status !== "CONNECTED") {
-                logger.info({ sessionId }, "El código de emparejamiento expiró (TTL de 3 minutos alcanzado).");
+                logger.info({ sessionId }, "El código de emparejamiento expiró (TTL de 5 minutos alcanzado).");
                 await this.stop(sessionId);
                 await this.authRepository.clearSession(sessionId);
                 await this.sessions.updateStatus(sessionId, "DISCONNECTED", {
                   disconnectReason: "pairingCodeTimeout",
                   disconnectedAt: new Date(),
                   lastConnectionCode: 408,
-                  lastConnectionError: "El código de vinculación expiró. Genera uno nuevo.",
+                  lastConnectionError: "El código de vinculación expiró. Presiona Revincular para generar uno nuevo.",
                   clearQr: true,
                   clearPairingCode: true,
                 });
@@ -306,7 +303,7 @@ export class BaileysSessionGateway implements ISessionGateway {
               logger.warn({ err, sessionId }, "Error al expirar pairing code por timeout.");
             }
           })();
-        }, 180_000);
+        }, 300_000);
         this.qrTimeoutTimers.set(sessionId, timer);
 
         return code || rawCode;
@@ -363,9 +360,7 @@ export class BaileysSessionGateway implements ISessionGateway {
               this.activePairingSockets.add(socket);
               const phoneToUse = s.expectedPhoneE164;
               if (phoneToUse) {
-                const rawExisting = s.pairingCode;
-                const existingCode = rawExisting ? String(rawExisting).replace(/[^A-Za-z0-9]/g, "").slice(0, 8) : undefined;
-                void this.generatePairingCode(sessionId, socket, phoneToUse, existingCode, saveCreds);
+                void this.generatePairingCode(sessionId, socket, phoneToUse, saveCreds);
               } else {
                 logger.warn({ sessionId }, "Sesión configurada como CODE pero sin expectedPhoneE164.");
               }
