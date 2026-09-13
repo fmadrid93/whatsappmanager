@@ -56,45 +56,143 @@ export class Voto1x10HierarchyService {
     return { territorios, administradores, gerentes, movilizadores };
   }
 
-  private resolverMovilizadorIds(seleccion: SeleccionJerarquica, gerentes: Voto1x10Usuario[], movilizadores: Voto1x10Usuario[]): Set<number> {
-    const movilizadorIds = new Set<number>(seleccion.movilizadorIds);
+  resolverMovilizadorIds(
+    seleccion: SeleccionJerarquica,
+    jerarquia: {
+      administradores: Voto1x10Usuario[];
+      gerentes: Voto1x10Usuario[];
+      movilizadores: Voto1x10Usuario[];
+    },
+  ): Set<number> {
+    const { administradores, gerentes, movilizadores } = jerarquia;
 
-    const administradorIds = new Set(seleccion.administradorIds);
-    const gerenteIds = new Set(seleccion.gerenteIds);
+    const seleccionMovilizadorIds = new Set(seleccion.movilizadorIds ?? []);
+    const seleccionGerenteIds = new Set(seleccion.gerenteIds ?? []);
+    const seleccionAdministradorIds = new Set(seleccion.administradorIds ?? []);
+    const seleccionTerritorioIds = new Set(seleccion.territorioIds ?? []);
 
-    // Si dentro del árbol de un administrador ya se eligió algún gerente puntual,
-    // ese gerente manda: no se expande el resto de los gerentes de ese
-    // administrador (si no, elegir un gerente específico nunca restringiría
-    // nada, quedaría "tapado" por la selección más amplia del administrador).
-    const administradoresConGerenteExplicito = new Set(
-      gerentes
-        .filter((g) => g.idUsuarioSupervisor !== undefined && gerenteIds.has(g.idUsuario))
-        .map((g) => g.idUsuarioSupervisor as number),
-    );
-    for (const gerente of gerentes) {
-      if (
-        gerente.idUsuarioSupervisor !== undefined
-        && administradorIds.has(gerente.idUsuarioSupervisor)
-        && !administradoresConGerenteExplicito.has(gerente.idUsuarioSupervisor)
-      ) {
-        gerenteIds.add(gerente.idUsuario);
+    // Mapas para lookup rápido por idUsuario
+    const movilizadoresById = new Map<number, Voto1x10Usuario>(movilizadores.map((m) => [m.idUsuario, m]));
+    const gerentesById = new Map<number, Voto1x10Usuario>(gerentes.map((g) => [g.idUsuario, g]));
+    const administradoresById = new Map<number, Voto1x10Usuario>(administradores.map((a) => [a.idUsuario, a]));
+
+    // Función auxiliar para obtener el idTerritorio de cualquier usuario o de su cadena de supervisores
+    const getTerritorioId = (u: Voto1x10Usuario | undefined): number | undefined => {
+      if (!u) return undefined;
+      if (u.idTerritorio !== undefined) return u.idTerritorio;
+      if (u.idUsuarioSupervisor !== undefined) {
+        const sup = gerentesById.get(u.idUsuarioSupervisor) ?? administradoresById.get(u.idUsuarioSupervisor);
+        return getTerritorioId(sup);
+      }
+      return undefined;
+    };
+
+    // 1. Iniciar con los movilizadores explícitamente seleccionados
+    const movilizadorIdsFinal = new Set<number>(seleccionMovilizadorIds);
+
+    // 2. Determinar qué nodos superiores tienen selección explícita de hijos (para no expandir el resto del subárbol)
+    const gerentesConMovilizadorExplicito = new Set<number>();
+    const administradoresConHijoExplicito = new Set<number>();
+    const territoriosConSeleccionExplicita = new Set<number>();
+
+    // Registrar selecciones de movilizadores hacia arriba
+    for (const movId of seleccionMovilizadorIds) {
+      const mov = movilizadoresById.get(movId);
+      if (mov) {
+        const tId = getTerritorioId(mov);
+        if (tId !== undefined) territoriosConSeleccionExplicita.add(tId);
+
+        if (mov.idUsuarioSupervisor !== undefined) {
+          gerentesConMovilizadorExplicito.add(mov.idUsuarioSupervisor);
+          if (administradoresById.has(mov.idUsuarioSupervisor)) {
+            administradoresConHijoExplicito.add(mov.idUsuarioSupervisor);
+          } else {
+            const ger = gerentesById.get(mov.idUsuarioSupervisor);
+            if (ger?.idUsuarioSupervisor !== undefined && administradoresById.has(ger.idUsuarioSupervisor)) {
+              administradoresConHijoExplicito.add(ger.idUsuarioSupervisor);
+            }
+          }
+        }
       }
     }
 
-    const territorioIds = new Set(seleccion.territorioIds);
+    // Registrar selecciones de gerentes hacia arriba
+    for (const gerId of seleccionGerenteIds) {
+      const ger = gerentesById.get(gerId);
+      if (ger) {
+        const tId = getTerritorioId(ger);
+        if (tId !== undefined) territoriosConSeleccionExplicita.add(tId);
 
-    for (const movilizador of movilizadores) {
-      const porGerente = movilizador.idUsuarioSupervisor !== undefined && gerenteIds.has(movilizador.idUsuarioSupervisor);
-      const porTerritorio = movilizador.idTerritorio !== undefined && territorioIds.has(movilizador.idTerritorio);
-      if (porGerente || porTerritorio) movilizadorIds.add(movilizador.idUsuario);
+        if (ger.idUsuarioSupervisor !== undefined && administradoresById.has(ger.idUsuarioSupervisor)) {
+          administradoresConHijoExplicito.add(ger.idUsuarioSupervisor);
+        }
+      }
     }
 
-    return movilizadorIds;
+    // Registrar selecciones de administradores hacia arriba (territorios)
+    for (const admId of seleccionAdministradorIds) {
+      const adm = administradoresById.get(admId);
+      if (adm) {
+        const tId = getTerritorioId(adm);
+        if (tId !== undefined) territoriosConSeleccionExplicita.add(tId);
+      }
+    }
+
+    // 3. Resolver Gerentes que deben expandirse a todos sus movilizadores
+    const gerentesParaExpandir = new Set<number>();
+
+    for (const gerId of seleccionGerenteIds) {
+      // Solo expande todos los movilizadores si NO se eligió un movilizador explícito de este gerente
+      if (!gerentesConMovilizadorExplicito.has(gerId)) {
+        gerentesParaExpandir.add(gerId);
+      }
+    }
+
+    // 4. Resolver Administradores que deben expandirse a sus gerentes y movilizadores
+    for (const admId of seleccionAdministradorIds) {
+      // Solo expande si este administrador NO tiene gerentes o movilizadores explícitamente elegidos
+      if (!administradoresConHijoExplicito.has(admId)) {
+        // Expandir todos los gerentes de este admin
+        for (const ger of gerentes) {
+          if (ger.idUsuarioSupervisor === admId && !gerentesConMovilizadorExplicito.has(ger.idUsuario)) {
+            gerentesParaExpandir.add(ger.idUsuario);
+          }
+        }
+        // Expandir movilizadores directos de este admin (sin gerente intermedio)
+        for (const mov of movilizadores) {
+          if (mov.idUsuarioSupervisor === admId && !seleccionMovilizadorIds.has(mov.idUsuario)) {
+            movilizadorIdsFinal.add(mov.idUsuario);
+          }
+        }
+      }
+    }
+
+    // 5. Agregar todos los movilizadores de los gerentes a expandir
+    for (const mov of movilizadores) {
+      if (mov.idUsuarioSupervisor !== undefined && gerentesParaExpandir.has(mov.idUsuarioSupervisor)) {
+        movilizadorIdsFinal.add(mov.idUsuario);
+      }
+    }
+
+    // 6. Resolver Territorios: solo expandir los territorios que NO tengan selecciones más específicas
+    for (const terrId of seleccionTerritorioIds) {
+      if (!territoriosConSeleccionExplicita.has(terrId)) {
+        // Expandir todos los movilizadores que pertenecen a este territorio
+        for (const mov of movilizadores) {
+          const tId = getTerritorioId(mov);
+          if (tId === terrId) {
+            movilizadorIdsFinal.add(mov.idUsuario);
+          }
+        }
+      }
+    }
+
+    return movilizadorIdsFinal;
   }
 
   async getContactosPorSeleccion(seleccion: SeleccionJerarquica): Promise<ContactosPorSeleccionResult> {
-    const { gerentes, movilizadores } = await this.getJerarquia();
-    const movilizadorIdsBruto = this.resolverMovilizadorIds(seleccion, gerentes, movilizadores);
+    const { administradores, gerentes, movilizadores } = await this.getJerarquia();
+    const movilizadorIdsBruto = this.resolverMovilizadorIds(seleccion, { administradores, gerentes, movilizadores });
 
     // Excluir movilizadores que envían mensajes masivos directamente desde su propio WhatsApp
     const movilizadoresAutoEnvio = new Set(
