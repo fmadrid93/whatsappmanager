@@ -335,7 +335,7 @@ export class PrismaSessionRepository implements ISessionRepository {
 
   async expireStalePendingSessions(maxAgeMs = 120_000): Promise<number> {
     const qrThreshold = new Date(Date.now() - maxAgeMs);
-    const codeThreshold = new Date(Date.now() - 180_000);
+    const codeThreshold = new Date(Date.now() - 300_000);
     const result = await this.prisma.whatsAppSession.updateMany({
       where: {
         deletedAt: null,
