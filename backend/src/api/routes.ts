@@ -753,8 +753,8 @@ export function createRoutes(container: AppContainer): Router {
           // Manejo para sesiones QR
           const isDeadStatus = ["DELETED", "LOGGED_OUT", "PAIRING_FAILED"].includes(session.status);
           const isStaleQr = Boolean(session.qrUpdatedAt && Date.now() - new Date(session.qrUpdatedAt).getTime() > 150_000);
-          const isStaleStarting = (session.status === "STARTING" || session.status === "CONNECTING") && Date.now() - new Date(session.updatedAt).getTime() > 45_000 && !session.qrCode;
-          const isDeadDisconnected = session.status === "DISCONNECTED" && !session.qrCode;
+          const isStaleStarting = (session.status === "STARTING" || session.status === "CONNECTING") && Date.now() - new Date(session.updatedAt).getTime() > 60_000 && !session.qrCode;
+          const isDeadDisconnected = session.status === "DISCONNECTED" && !session.qrCode && Date.now() - new Date(session.updatedAt).getTime() > 15_000;
 
           const shouldReset = forceReset || isDeadStatus || isStaleQr || isStaleStarting || isDeadDisconnected;
 
