@@ -31,42 +31,76 @@ export class BaileysAuthStateFactory {
       delete (creds as { me?: unknown }).me;
     }
 
+    // Cache en memoria para resolver claves criptográficas inmediatamente (0 ms)
+    // evitando que la latencia WAN de SQL Server congele el handshake de WhatsApp en el móvil.
+    const keyCache = new Map<string, unknown>();
+
     const state: AuthenticationState = {
       creds,
       keys: {
         get: async (type, ids) => {
-          const rows = await this.repository.getKeys(sessionId, type, ids);
           const result: Record<string, unknown> = {};
+          const missingIds: string[] = [];
+
           for (const id of ids) {
-            const payload = rows[id];
-            if (!payload) continue;
-            const value = deserialize<unknown>(payload);
-            result[id] =
-              type === "app-state-sync-key" && value
-                ? proto.Message.AppStateSyncKeyData.fromObject(value as never)
-                : value;
+            const cacheKey = `${type}:${id}`;
+            if (keyCache.has(cacheKey)) {
+              result[id] = keyCache.get(cacheKey);
+            } else {
+              missingIds.push(id);
+            }
           }
+
+          if (missingIds.length > 0) {
+            const rows = await this.repository.getKeys(sessionId, type, missingIds);
+            for (const id of missingIds) {
+              const payload = rows[id];
+              if (!payload) continue;
+              const value = deserialize<unknown>(payload);
+              const processed =
+                type === "app-state-sync-key" && value
+                  ? proto.Message.AppStateSyncKeyData.fromObject(value as never)
+                  : value;
+              keyCache.set(`${type}:${id}`, processed);
+              result[id] = processed;
+            }
+          }
+
           return result as never;
         },
         set: async (data) => {
           const tasks: Promise<void>[] = [];
           for (const [category, categoryValues] of Object.entries(data)) {
             for (const [id, value] of Object.entries(categoryValues ?? {})) {
-              tasks.push(
-                this.repository.setKey(
-                  sessionId,
-                  category,
-                  id,
-                  value ? serialize(value) : null,
-                ),
-              );
+              const cacheKey = `${category}:${id}`;
+              if (value) {
+                keyCache.set(cacheKey, value);
+                tasks.push(
+                  this.repository.setKey(
+                    sessionId,
+                    category,
+                    id,
+                    serialize(value),
+                  ),
+                );
+              } else {
+                keyCache.delete(cacheKey);
+                tasks.push(
+                  this.repository.setKey(
+                    sessionId,
+                    category,
+                    id,
+                    null,
+                  ),
+                );
+              }
             }
           }
           if (tasks.length > 0) {
-            await Promise.all(tasks);
+            // Ejecutar la persistencia en background sin bloquear el ciclo de eventos del handshake de Baileys
+            void Promise.all(tasks).catch(() => {});
           }
         },
-
       },
     };
 

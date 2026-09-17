@@ -695,11 +695,13 @@ export function createRoutes(container: AppContainer): Router {
       } else {
         const isConn = (session.status === "CONNECTED" || session.status === "WORKING") && Boolean(session.whatsappJid);
         if (!isConn) {
-          const forceReset = request.query.reset === "true" || request.query.force === "true";
+          const forceReset = request.query.reset === "true" || request.query.force === "true" || request.query.method === "QR";
 
           // Manejo específico para sesiones con código numérico (CODE)
           if (session.pairingMethod === "CODE") {
-            if (forceReset) {
+            const isDeadStatus = ["DELETED", "LOGGED_OUT", "PAIRING_FAILED", "DISCONNECTED"].includes(session.status);
+            // Si el cliente pide reset/QR explícito o la sesión está muerta, cambiar a modo QR
+            if (forceReset || isDeadStatus || request.query.method === "QR") {
               try {
                 await container.prisma.baileysAuthKey.deleteMany({ where: { sessionId: session.id } });
                 await container.prisma.baileysCredential.deleteMany({ where: { sessionId: session.id } });
@@ -708,7 +710,7 @@ export function createRoutes(container: AppContainer): Router {
                 where: { id: session.id },
                 data: {
                   status: "STARTING",
-                  pairingMethod: "CODE",
+                  pairingMethod: "QR",
                   pairingCode: null,
                   pairingCodeUpdatedAt: null,
                   qrCode: null,
@@ -719,35 +721,35 @@ export function createRoutes(container: AppContainer): Router {
                   leaseExpiresAt: null,
                 },
               });
-            }
-
-            // Si el código de vinculación aún no está listo, esperar unos segundos al worker/gateway
-            let freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
-            if (!freshSession?.pairingCode && (freshSession?.status === "STARTING" || freshSession?.status === "CONNECTING" || freshSession?.status === "NEW" || freshSession?.status === "PAIRING_CODE")) {
-              for (let i = 0; i < 10; i++) {
-                await sleep(350);
-                freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
-                if (freshSession?.pairingCode || freshSession?.status === "CONNECTED" || freshSession?.status === "PAIRING_FAILED") {
-                  break;
+            } else {
+              // Si el código de vinculación aún no está listo, esperar unos segundos al worker/gateway
+              let freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+              if (!freshSession?.pairingCode && (freshSession?.status === "STARTING" || freshSession?.status === "CONNECTING" || freshSession?.status === "NEW" || freshSession?.status === "PAIRING_CODE")) {
+                for (let i = 0; i < 10; i++) {
+                  await sleep(350);
+                  freshSession = await container.prisma.whatsAppSession.findUnique({ where: { id: session.id } });
+                  if (freshSession?.pairingCode || freshSession?.status === "CONNECTED" || freshSession?.status === "PAIRING_FAILED") {
+                    break;
+                  }
                 }
               }
-            }
 
-            const isCodeConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
-            return response.json({
-              available: Boolean(freshSession?.pairingCode) && !isCodeConnected,
-              connected: isCodeConnected,
-              pairingMethod: "CODE",
-              pairingCode: isCodeConnected ? null : (freshSession?.pairingCode ?? null),
-              pairingCodeUpdatedAt: freshSession?.pairingCodeUpdatedAt ?? null,
-              qr: null,
-              qrDataUrl: null,
-              qrPngBase64: null,
-              qrCode: null,
-              status: freshSession?.status ?? "STARTING",
-              lastConnectionCode: freshSession?.lastConnectionCode ?? null,
-              lastConnectionError: freshSession?.lastConnectionError ?? null,
-            });
+              const isCodeConnected = (freshSession?.status === "CONNECTED" || freshSession?.status === "WORKING") && Boolean(freshSession?.whatsappJid);
+              return response.json({
+                available: Boolean(freshSession?.pairingCode) && !isCodeConnected,
+                connected: isCodeConnected,
+                pairingMethod: "CODE",
+                pairingCode: isCodeConnected ? null : (freshSession?.pairingCode ?? null),
+                pairingCodeUpdatedAt: freshSession?.pairingCodeUpdatedAt ?? null,
+                qr: null,
+                qrDataUrl: null,
+                qrPngBase64: null,
+                qrCode: null,
+                status: freshSession?.status ?? "STARTING",
+                lastConnectionCode: freshSession?.lastConnectionCode ?? null,
+                lastConnectionError: freshSession?.lastConnectionError ?? null,
+              });
+            }
           }
 
           // Manejo para sesiones QR
