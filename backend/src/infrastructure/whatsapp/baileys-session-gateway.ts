@@ -11,7 +11,7 @@ import type { ISessionRepository } from "../../application/ports/repositories/se
 import type { IBaileysAuthRepository } from "../../application/ports/repositories/baileys-auth.repository.js";
 import type { IWhatsAppSocketRegistry } from "../../application/ports/whatsapp/socket-registry.js";
 import type { IWhatsAppMessageRepository } from "../../application/ports/repositories/whatsapp-message.repository.js";
-import { BaileysAuthStateFactory } from "./baileys-auth-state.factory.js";
+import { BaileysAuthStateFactory, clearSessionMemoryCache } from "./baileys-auth-state.factory.js";
 import { InboundMessageService } from "../../application/services/inbound-message.service.js";
 import { FailoverService } from "../../application/services/failover.service.js";
 import { BaileysMessagePersistenceHandler } from "./baileys-message-persistence.handler.js";
@@ -189,7 +189,9 @@ export class BaileysSessionGateway implements ISessionGateway {
 
       this.registry.set(sessionId, socket);
       this.registerConnectionUpdates(sessionId, socket, saveCreds);
-      socket.ev.on("creds.update", saveCreds);
+      socket.ev.on("creds.update", (update) => {
+        void saveCreds(update);
+      });
       this.messagePersistence.register(socket, sessionId);
       this.inbound.register(socket, sessionId);
     } finally {

@@ -15,25 +15,33 @@ function deserialize<T>(value: Buffer): T {
   return JSON.parse(value.toString("utf8"), BufferJSON.reviver) as T;
 }
 
+const sessionKeyCache = new Map<string, Map<string, unknown>>();
+
+export function clearSessionMemoryCache(sessionId: string): void {
+  sessionKeyCache.delete(sessionId);
+}
+
+function getSessionKeyCache(sessionId: string): Map<string, unknown> {
+  let cache = sessionKeyCache.get(sessionId);
+  if (!cache) {
+    cache = new Map<string, unknown>();
+    sessionKeyCache.set(sessionId, cache);
+  }
+  return cache;
+}
+
 export class BaileysAuthStateFactory {
   constructor(private readonly repository: IBaileysAuthRepository) {}
 
-  async create(sessionId: string): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void> }> {
+  async create(sessionId: string): Promise<{ state: AuthenticationState; saveCreds: (update?: Partial<AuthenticationCreds>) => Promise<void> }> {
     const stored = await this.repository.getCredentials(sessionId);
     const creds: AuthenticationCreds = stored
       ? deserialize<AuthenticationCreds>(stored)
       : initAuthCreds();
 
-    // Si la sesión no ha completado el registro (pair-success), me debe ser undefined.
-    // De lo contrario, Baileys intentará un login prematuro (generateLoginNode) en lugar de registration (generateRegistrationNode),
-    // lo que provoca que WhatsApp rechace la conexión con 401 Unauthorized.
-    if (!creds.registered) {
-      delete (creds as { me?: unknown }).me;
-    }
-
-    // Cache en memoria para resolver claves criptográficas inmediatamente (0 ms)
-    // evitando que la latencia WAN de SQL Server congele el handshake de WhatsApp en el móvil.
-    const keyCache = new Map<string, unknown>();
+    // Cache en memoria por sesión persistente entre reinicios de socket (515/Stream Restart)
+    // para resolver claves criptográficas inmediatamente (0 ms) sin latencia WAN ni bloqueos.
+    const keyCache = getSessionKeyCache(sessionId);
 
     const state: AuthenticationState = {
       creds,
@@ -97,7 +105,7 @@ export class BaileysAuthStateFactory {
             }
           }
           if (tasks.length > 0) {
-            // Ejecutar la persistencia en background sin bloquear el ciclo de eventos del handshake de Baileys
+            // Persistencia asíncrona sin bloquear el handshake
             void Promise.all(tasks).catch(() => {});
           }
         },
@@ -106,7 +114,12 @@ export class BaileysAuthStateFactory {
 
     return {
       state,
-      saveCreds: async () => this.repository.saveCredentials(sessionId, serialize(creds)),
+      saveCreds: async (update?: Partial<AuthenticationCreds>) => {
+        if (update) {
+          Object.assign(creds, update);
+        }
+        await this.repository.saveCredentials(sessionId, serialize(creds));
+      },
     };
   }
 }
