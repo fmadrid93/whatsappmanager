@@ -1,12 +1,24 @@
 # Bitácora de Actualizaciones y Correcciones
 
-## Estado Actual: v1.2.4 - PROTECCIÓN ANTI-BLOQUEO & LÍMITE DIARIO EN JERARQUÍA
+## Estado Actual: v1.4.1 - FILTRO DE AUDIENCIA PENDIENTE Y JERARQUÍA OPTIMIZADA
 
-### Fecha: 08/09/2026
-### Versión UI: `v1.2.4` (en menú lateral de la app)
-### Versión Core: `1.3.2`
+### Fecha: 24/09/2026
+### Versión UI: `v1.4.1` (en menú lateral de la app)
+### Versión Core: `1.4.1`
 ### Rama: `main`
 ### Mejoras Clave:
+1. **Ocultamiento de Movilizadores sin Pendientes:**
+   * En `/envios-jerarquia` y `/numeros-repetidos`, se filtran automáticamente y no se muestran los movilizadores que tengan 0 contactos o a los que ya se les enviaron todos sus mensajes (`EstadoApoyo != PENDIENTE`).
+2. **Indicador de Cantidad Pendiente en Combos:**
+   * Todos los niveles de la jerarquía (Territorio, Administrador, Gerente, Movilizador) muestran al lado de su nombre únicamente los contactos que faltan enviar: `Nombre (X pendientes)`.
+3. **Cascada Estricta de Filtros:**
+   * Selección jerárquica con recálculo dinámico y limpieza automática de nodos hijos (`Territorio → Administrador → Gerente → Movilizador`).
+4. **Compilación de Producción Actualizada:**
+   * Frontend Angular y Backend TypeScript compilados en su última versión `1.4.1`.
+
+---
+
+## Versión Anterior: v1.2.4 - PROTECCIÓN ANTI-BLOQUEO & LÍMITE DIARIO EN JERARQUÍA
 1. **Límite Diario de Mensajes por Número en Jerarquía (`maxDailyMessagesPerSession`):**
    * Configuración en la pantalla `/envios-jerarquia` de un cupo máximo de mensajes por día por sesión.
    * Si se define un límite (ej. 20 msgs/día), el backend distribuye automáticamente los mensajes usando el campo nativo `availableAt` en bloques de 24 horas (`hoy`, `mañana`, `pasado mañana`). No requiere migraciones SQL.

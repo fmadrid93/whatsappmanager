@@ -113,16 +113,19 @@ export class NumerosRepetidosComponent implements OnInit {
   readonly personasRepetidas = signal<Voto1x10PersonaRepetida[] | null>(null);
 
   readonly territorioOptions = computed<{ id: number; label: string }[]>(() =>
-    (this.jerarquia()?.territorios ?? []).map((t) => ({ id: t.idTerritorio, label: `${t.nombre} (${t.tipoTerritorio})` })));
+    (this.jerarquia()?.territorios ?? [])
+      .filter((t) => (t.totalPersonas || 0) > 0)
+      .map((t) => ({ id: t.idTerritorio, label: `${t.nombre} (${t.totalPersonas} pendientes)` })));
 
   readonly movilizadorOptions = computed<{ id: number; label: string }[]>(() => {
     const data = this.jerarquia();
     if (!data) return [];
     const territorio = this.territorioId();
-    const movilizadores: Voto1x10Usuario[] = territorio === undefined
+    const movilizadores: Voto1x10Usuario[] = (territorio === undefined
       ? data.movilizadores
-      : data.movilizadores.filter((m) => m.idTerritorio === territorio);
-    return movilizadores.map((m) => ({ id: m.idUsuario, label: m.nombreCompleto }));
+      : data.movilizadores.filter((m) => m.idTerritorio === territorio)
+    ).filter((m) => (m.totalPersonas || 0) > 0);
+    return movilizadores.map((m) => ({ id: m.idUsuario, label: `${m.nombreCompleto} (${m.totalPersonas} pendientes)` }));
   });
 
   readonly resultado = computed(() => {

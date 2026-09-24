@@ -85,7 +85,7 @@ import {
                 <div class="filter-field">
                   <div class="filter-label-row">
                     <label><i class="pi pi-map-marker"></i> Territorio</label>
-                    <span class="count-pill">{{ jerarquia()!.territorios.length }} disponibles</span>
+                    <span class="count-pill">{{ territorioOptions().length }} con pendientes</span>
                   </div>
                   <p-multiSelect
                     [options]="territorioOptions()"
@@ -108,7 +108,7 @@ import {
                 <div class="filter-field">
                   <div class="filter-label-row">
                     <label><i class="pi pi-user"></i> Administrador</label>
-                    <span class="count-pill">{{ jerarquia()!.administradores.length }} disponibles</span>
+                    <span class="count-pill">{{ administradorOptions().length }}{{ territorioIds().length ? ' en territorio(s)' : ' disponibles' }}</span>
                   </div>
                   <p-multiSelect
                     [options]="administradorOptions()"
@@ -154,7 +154,7 @@ import {
                 <div class="filter-field">
                   <div class="filter-label-row">
                     <label><i class="pi pi-users"></i> Movilizador</label>
-                    <span class="count-pill">{{ movilizadorOptions().length }}{{ (gerenteIds().length || territorioIds().length) ? ' de lo elegido' : ' disponibles' }}</span>
+                    <span class="count-pill">{{ movilizadorOptions().length }}{{ (gerenteIds().length || administradorIds().length || territorioIds().length) ? ' de lo seleccionado' : ' disponibles' }}</span>
                   </div>
                   <p-multiSelect
                     [options]="movilizadorOptions()"
@@ -487,6 +487,25 @@ import {
                     }
                   </select>
                 </div>
+              </div>
+
+              <!-- LÍMITE TOTAL DE CONTACTOS A ENVIAR -->
+              <div class="form-group daily-limit-box">
+                <div class="daily-limit-header">
+                  <label for="cj-limite-contactos"><i class="pi pi-filter"></i> Límite máx. de contactos a enviar (opcional)</label>
+                  <span class="sub-tip">Tope de destinatarios</span>
+                </div>
+                <input
+                  pInputText
+                  type="number"
+                  min="1"
+                  max="50000"
+                  id="cj-limite-contactos"
+                  name="cjLimiteContactos"
+                  [(ngModel)]="limiteContactosMax"
+                  placeholder="Ej: 50 (dejar vacío para enviar a todos los encontrados)"
+                  class="cj-input w-full"
+                />
               </div>
 
               <!-- LÍMITE MÁXIMO DIARIO (PACING) -->
@@ -2432,51 +2451,95 @@ export class CampaignsJerarquicoComponent implements OnInit {
     this.territorioIds().length + this.administradorIds().length + this.gerenteIds().length + this.movilizadorIds().length);
 
   readonly territorioOptions = computed<{ id: number; label: string }[]>(() =>
-    (this.jerarquia()?.territorios ?? []).map((t) => ({
-      id: t.idTerritorio,
-      label: `${t.nombre} (${t.tipoTerritorio})`,
-    })));
+    (this.jerarquia()?.territorios ?? [])
+      .filter((t) => (t.totalPersonas || 0) > 0)
+      .map((t) => ({
+        id: t.idTerritorio,
+        label: `${t.nombre} (${t.totalPersonas} pendientes)`,
+      })));
 
   private readonly administradoresVisibles = computed<Voto1x10Usuario[]>(() => {
     const data = this.jerarquia();
     if (!data) return [];
     const territorios = this.territorioIds();
-    if (territorios.length === 0) return data.administradores;
-    return data.administradores.filter((a) => a.idTerritorio !== undefined && territorios.includes(a.idTerritorio));
+    const list = data.administradores.filter((a) => (a.totalPersonas || 0) > 0);
+    if (territorios.length === 0) return list;
+    return list.filter((a) => a.idTerritorio !== undefined && territorios.includes(a.idTerritorio));
   });
 
   readonly administradorOptions = computed<{ id: number; label: string }[]>(() =>
     this.administradoresVisibles().map((a) => ({
       id: a.idUsuario,
-      label: a.territorio ? `${a.nombreCompleto} — ${a.territorio}` : a.nombreCompleto,
+      label: `${a.nombreCompleto} (${a.totalPersonas} pendientes)${a.territorio ? ` — ${a.territorio}` : ''}`,
     })));
 
   private readonly gerentesVisibles = computed<Voto1x10Usuario[]>(() => {
     const data = this.jerarquia();
     if (!data) return [];
     const admins = this.administradorIds();
-    if (admins.length === 0) return data.gerentes;
-    return data.gerentes.filter((g) => g.idUsuarioSupervisor !== undefined && admins.includes(g.idUsuarioSupervisor));
+    const territorios = this.territorioIds();
+
+    let list = data.gerentes.filter((g) => (g.totalPersonas || 0) > 0);
+    if (admins.length > 0) {
+      list = list.filter((g) => g.idUsuarioSupervisor !== undefined && admins.includes(g.idUsuarioSupervisor));
+    } else if (territorios.length > 0) {
+      list = list.filter((g) => {
+        if (g.idTerritorio !== undefined && territorios.includes(g.idTerritorio)) return true;
+        const sup = data.administradores.find((a) => a.idUsuario === g.idUsuarioSupervisor);
+        return sup?.idTerritorio !== undefined && territorios.includes(sup.idTerritorio);
+      });
+    }
+    return list;
   });
 
   readonly gerenteOptions = computed<{ id: number; label: string }[]>(() =>
-    this.gerentesVisibles().map((g) => ({ id: g.idUsuario, label: g.nombreCompleto })));
+    this.gerentesVisibles().map((g) => ({
+      id: g.idUsuario,
+      label: `${g.nombreCompleto} (${g.totalPersonas} pendientes)${g.territorio ? ` — ${g.territorio}` : ''}`,
+    })));
 
   private readonly movilizadoresVisibles = computed<Voto1x10Usuario[]>(() => {
     const data = this.jerarquia();
     if (!data) return [];
     const gerentes = this.gerenteIds();
+    const admins = this.administradorIds();
     const territorios = this.territorioIds();
-    if (gerentes.length === 0 && territorios.length === 0) return data.movilizadores;
-    return data.movilizadores.filter((m) =>
-      (m.idUsuarioSupervisor !== undefined && gerentes.includes(m.idUsuarioSupervisor)) ||
-      (m.idTerritorio !== undefined && territorios.includes(m.idTerritorio)));
+
+    let list = data.movilizadores.filter((m) => (m.totalPersonas || 0) > 0);
+
+    // 1. Si se eligieron gerentes específicos: SOLO movilizadores de esos gerentes
+    if (gerentes.length > 0) {
+      list = list.filter((m) => m.idUsuarioSupervisor !== undefined && gerentes.includes(m.idUsuarioSupervisor));
+    } else if (admins.length > 0) {
+      // 2. Si se eligieron administradores (sin gerentes específicos): movilizadores bajo esos admins
+      const gerentesDeAdmins = new Set(
+        data.gerentes
+          .filter((g) => g.idUsuarioSupervisor !== undefined && (g.totalPersonas || 0) > 0 && admins.includes(g.idUsuarioSupervisor))
+          .map((g) => g.idUsuario),
+      );
+      list = list.filter((m) =>
+        m.idUsuarioSupervisor !== undefined && (admins.includes(m.idUsuarioSupervisor) || gerentesDeAdmins.has(m.idUsuarioSupervisor)),
+      );
+    }
+
+    // 3. Si hay territorios seleccionados: deben pertenecer al territorio seleccionado
+    if (territorios.length > 0) {
+      list = list.filter((m) => {
+        if (m.idTerritorio !== undefined && territorios.includes(m.idTerritorio)) return true;
+        const supGer = data.gerentes.find((g) => g.idUsuario === m.idUsuarioSupervisor);
+        if (supGer?.idTerritorio !== undefined && territorios.includes(supGer.idTerritorio)) return true;
+        const supAdm = data.administradores.find((a) => a.idUsuario === m.idUsuarioSupervisor || (supGer && a.idUsuario === supGer.idUsuarioSupervisor));
+        return supAdm?.idTerritorio !== undefined && territorios.includes(supAdm.idTerritorio);
+      });
+    }
+
+    return list;
   });
 
   readonly movilizadorOptions = computed<{ id: number; label: string }[]>(() =>
     this.movilizadoresVisibles().map((m) => {
       const tag = m.enviaMensajesMasivos ? ' ⚡ [Auto-envío propio]' : '';
-      return { id: m.idUsuario, label: `${m.nombreCompleto} (${m.totalPersonas} personas)${tag}` };
+      return { id: m.idUsuario, label: `${m.nombreCompleto} (${m.totalPersonas} pendientes)${tag}` };
     }));
 
   /** Resumen legible de la jerarquía elegida */
@@ -2641,6 +2704,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
   ] as const;
   defaultRegion = "PY";
   maxDailyMessagesPerSession: number | null = null;
+  limiteContactosMax: number | null = null;
 
   tieneLimiteDiarioActivo(): boolean {
     const limit = this.maxDailyMessagesPerSession;
@@ -3026,10 +3090,28 @@ export class CampaignsJerarquicoComponent implements OnInit {
 
   onSelectionChange(nivel: "territorio" | "administrador" | "gerente" | "movilizador", ids: number[]): void {
     const valores = ids ?? [];
-    if (nivel === "territorio") this.territorioIds.set(valores);
-    else if (nivel === "administrador") this.administradorIds.set(valores);
-    else if (nivel === "gerente") this.gerenteIds.set(valores);
-    else this.movilizadorIds.set(valores);
+    if (nivel === "territorio") {
+      this.territorioIds.set(valores);
+      // Limpiar selecciones hijas que ya no sean válidas
+      const validAdmins = new Set(this.administradoresVisibles().map((a) => a.idUsuario));
+      this.administradorIds.set(this.administradorIds().filter((id) => validAdmins.has(id)));
+      const validGerentes = new Set(this.gerentesVisibles().map((g) => g.idUsuario));
+      this.gerenteIds.set(this.gerenteIds().filter((id) => validGerentes.has(id)));
+      const validMovs = new Set(this.movilizadoresVisibles().map((m) => m.idUsuario));
+      this.movilizadorIds.set(this.movilizadorIds().filter((id) => validMovs.has(id)));
+    } else if (nivel === "administrador") {
+      this.administradorIds.set(valores);
+      const validGerentes = new Set(this.gerentesVisibles().map((g) => g.idUsuario));
+      this.gerenteIds.set(this.gerenteIds().filter((id) => validGerentes.has(id)));
+      const validMovs = new Set(this.movilizadoresVisibles().map((m) => m.idUsuario));
+      this.movilizadorIds.set(this.movilizadorIds().filter((id) => validMovs.has(id)));
+    } else if (nivel === "gerente") {
+      this.gerenteIds.set(valores);
+      const validMovs = new Set(this.movilizadoresVisibles().map((m) => m.idUsuario));
+      this.movilizadorIds.set(this.movilizadorIds().filter((id) => validMovs.has(id)));
+    } else {
+      this.movilizadorIds.set(valores);
+    }
 
     this.contactosResult.set(null);
     this.validationResult.set(null);
@@ -3052,6 +3134,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
   cargarPersonas(): void {
     this.loadingContactos.set(true);
     const aud = this.filtroAudiencia();
+    const limite = this.limiteContactosMax && this.limiteContactosMax > 0 ? Number(this.limiteContactosMax) : undefined;
     this.api.voto1x10Contactos({
       territorioIds: this.territorioIds(),
       administradorIds: this.administradorIds(),
@@ -3060,6 +3143,7 @@ export class CampaignsJerarquicoComponent implements OnInit {
       soloSinMensaje: aud === "PENDIENTE",
       estadoApoyo: aud === "NO_VOTO" ? undefined : aud,
       estadoDiaD: aud === "NO_VOTO" ? "NO_VOTO" : undefined,
+      limite,
     }).subscribe({
       next: (resultado) => {
         this.loadingContactos.set(false);
@@ -3146,10 +3230,13 @@ export class CampaignsJerarquicoComponent implements OnInit {
       this.messages.add({ severity: "warn", summary: "Selecciona al menos una sesión emisora" });
       return;
     }
-    const contacts = this.contactosResult()?.contacts ?? [];
+    let contacts = this.contactosResult()?.contacts ?? [];
     if (contacts.length === 0) {
       this.messages.add({ severity: "warn", summary: "Cargá personas antes de crear la campaña" });
       return;
+    }
+    if (this.limiteContactosMax && this.limiteContactosMax > 0) {
+      contacts = contacts.slice(0, Number(this.limiteContactosMax));
     }
     if (!this.messageText.trim() && !this.selectedMediaAssetId()) {
       this.messages.add({ severity: "warn", summary: "Agrega un mensaje o multimedia" });

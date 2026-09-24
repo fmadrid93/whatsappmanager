@@ -145,7 +145,7 @@ export class PrismaCampaignRepository implements ICampaignRepository {
             { lastErrorCode: { not: "HELD_SESSION_QUARANTINED" } },
           ],
         },
-        data: { availableAt: new Date(), lastErrorCode: null, lastErrorMessage: null },
+        data: { lastErrorCode: null, lastErrorMessage: null },
       });
       await tx.outboxEvent.create({ data: {
         tenantId, aggregateType: "Campaign", aggregateId: id, eventType: "CAMPAIGN_START_REQUESTED",

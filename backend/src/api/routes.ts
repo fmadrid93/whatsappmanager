@@ -45,6 +45,7 @@ export const jerarquiaSeleccionSchema = z.object({
   soloSinMensaje: z.boolean().optional().default(true),
   estadoApoyo: z.string().optional(),
   estadoDiaD: z.string().optional(),
+  limite: z.coerce.number().int().positive().optional(),
 });
 
 const recurringCampaignCreateBase = {

@@ -12,6 +12,7 @@ export interface Voto1x10Territorio {
   nombrePadre?: string;
   nombre: string;
   tipoTerritorio: string;
+  totalPersonas?: number;
 }
 
 export interface Voto1x10Usuario {

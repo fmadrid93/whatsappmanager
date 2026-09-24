@@ -58,6 +58,7 @@ export interface Voto1x10SeleccionInput {
   soloSinMensaje?: boolean;
   estadoApoyo?: string;
   estadoDiaD?: string;
+  limite?: number;
 }
 
 export interface RecurringCampaignRecord {
@@ -89,6 +90,7 @@ export interface Voto1x10Territorio {
   nombrePadre?: string;
   nombre: string;
   tipoTerritorio: string;
+  totalPersonas?: number;
 }
 
 export interface Voto1x10Usuario {
