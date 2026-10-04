@@ -104,11 +104,11 @@ SQLSERVER_HOST=db.contactmanager.net
 SQLSERVER_PORT=1433
 SQLSERVER_DATABASE=whatsapp_saas
 SQLSERVER_APP_USER=ti
-SQLSERVER_APP_PASSWORD=selectov2
+SQLSERVER_APP_PASSWORD=elnoble2026
 SQLSERVER_ENCRYPT=true
 SQLSERVER_TRUST_SERVER_CERTIFICATE=true
 SQLSERVER_SCHEMA=dbo
-DATABASE_URL="sqlserver://db.contactmanager.net:1433;database=whatsapp_saas;user=ti;password=selectov2;encrypt=true;trustServerCertificate=true;schema=dbo;connection_limit=10;pool_timeout=60"
+DATABASE_URL="sqlserver://db.contactmanager.net:1433;database=whatsapp_saas;user=ti;password=elnoble2026;encrypt=true;trustServerCertificate=true;schema=dbo;connection_limit=30;pool_timeout=30"
 PRISMA_PROVIDER=sqlserver
 
 # Región y Normalización Telefónica E.164 (Google Libphonenumber)

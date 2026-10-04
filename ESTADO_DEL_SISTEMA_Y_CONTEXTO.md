@@ -25,15 +25,15 @@
 ### SQL Server Central
 - **Host / Puerto**: `db.contactmanager.net,1433`
 - **Usuario**: `ti`
-- **Contraseña**: `selectov2`
+- **Contraseña**: `elnoble2026`
 - **Base de Datos WhatsApp SaaS**: `whatsapp_saas` (Prisma ORM)
 - **Base de Datos Campaña / Encuestas**: `AppCampana1x10` (.NET Core 8)
 - **Persistencia de Sesiones**: Toda la autenticación de Baileys (`creds.json`, tokens, llaves criptográficas) se almacena cifrada en SQL Server (`BaileysCredential`, `BaileysAuthKey`). **Si se apaga o reinicia el servidor, NUNCA se pierden las sesiones de WhatsApp**.
 - **Cadena de Conexión Optimizada**:
   ```env
-  DATABASE_URL="sqlserver://db.contactmanager.net:1433;database=whatsapp_saas;user=ti;password=selectov2;encrypt=true;trustServerCertificate=true;schema=dbo;connection_limit=10;pool_timeout=60"
+  DATABASE_URL="sqlserver://db.contactmanager.net:1433;database=whatsapp_saas;user=ti;password=elnoble2026;encrypt=true;trustServerCertificate=true;schema=dbo;connection_limit=30;pool_timeout=30"
   ```
-  *(Límite de 10 conexiones por worker para permitir hasta 60 servidores sin saturar los worker threads de SQL Server).*
+  *(Límite de conexiones y timeout configurados para permitir alto rendimiento en despachos masivos).*
 
 ### Redis Local (En cada nodo)
 - **Host**: `127.0.0.1:6379` (0 ms de latencia)
